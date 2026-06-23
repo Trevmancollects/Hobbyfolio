@@ -345,7 +345,16 @@ function InventoryTab({inventory,setInventory,setTransactions}){
   const aging90=activeInv.filter(c=>c.status==="For Sale"&&c.buyDate&&daysBetween(c.buyDate,today())>90);
   const underwater=activeInv.filter(c=>(+c.marketValue||+c.buyPrice)<+c.buyPrice);
 
-  const save=card=>{setInventory(prev=>prev.find(c=>c.id===card.id)?prev.map(c=>c.id===card.id?card:c):[...prev,card]);setModal(null);};
+  const save=card=>{
+    const isNew=!inventory.find(c=>c.id===card.id);
+    setInventory(prev=>prev.find(c=>c.id===card.id)?prev.map(c=>c.id===card.id?card:c):[...prev,card]);
+    // Auto-create purchase transaction for new cards only
+    if(isNew&&card.buyPrice){
+      const tx={id:uid(),type:"purchase",cardId:card.id,player:card.player,date:card.buyDate||today(),platform:card.buyPlatform||"Other",salePrice:0,platformFeePct:0,shippingOut:0,shippingIn:0,notes:"Manual entry",netProceeds:0,gl:0,purchasePrice:+card.buyPrice,gradingFee:0,tradeValueOut:0,tradeValueIn:0};
+      setTransactions(prev=>[...prev,tx]);
+    }
+    setModal(null);
+  };
   const handleSell=(card,d)=>{setInventory(p=>p.map(c=>c.id===card.id?{...c,status:"Sold",soldDate:d.date,soldPrice:d.salePrice}:c));
     setTransactions(p=>[...p,{id:uid(),type:"sale",cardId:card.id,player:card.player,date:d.date,platform:d.platform,salePrice:d.salePrice,platformFeePct:d.platformFeePct,shippingOut:d.shippingOut,shippingIn:0,notes:d.notes,netProceeds:d.net,gl:d.gl,purchasePrice:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0}]);setSellModal(null);};
   const handleGradingReturn=(card,grade,cert,notes)=>{setInventory(p=>p.map(c=>c.id===card.id?{...c,grade,certNum:cert||c.certNum,condition:"Graded",status:"For Sale",notes:notes?`${c.notes||""} | Return: ${notes}`:c.notes}:c));setGradingModal(null);};
