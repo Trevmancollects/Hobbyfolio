@@ -17,7 +17,7 @@ const GRADES=["PSA 10","PSA 9","PSA 8","PSA 7","PSA 6","PSA 5","BGS 10","BGS 9.5
 const GRADING_FEES={"PSA Economy":20,"PSA Regular":50,"PSA Express":150,"PSA Super Express":300,"BGS Economy":22,"BGS Regular":75,"BGS Express":150,"SGC Regular":30};
 const CONDITIONS=["Raw","Graded"];
 const ACTIVE_STATUSES=["For Sale","PC","Trade Bait","At Consignment","Submitted for Grading"];
-const ALL_STATUSES=[...ACTIVE_STATUSES,"Sold","Archived"];
+const ALL_STATUSES=[...ACTIVE_STATUSES,"Sold","Traded","Archived"];
 const DEDUCTION_CATEGORIES=["Shipping","Supplies","Show Entry Fee","Home Office","Grading Fees","Platform Fees","Printing/Labels","Storage","Other"];
 const OFFER_STATUSES=["Pending","Accepted","Declined","Expired","Countered"];
 const JOURNAL_TAGS=["General","Show Notes","Market Obs","Weekly Review","Deal Analysis","Grading Notes"];
@@ -27,7 +27,7 @@ const COLLECTIBLES_LT_RATE=0.28;
 const NAV_ITEMS=[
   {id:"dashboard",label:"Dashboard",icon:"▦"},{id:"portfolio",label:"Portfolio",icon:"◉"},{id:"inventory",label:"Inventory",icon:"⊞"},
   {id:"transactions",label:"Transactions",icon:"⇄"},{id:"pnl",label:"P&L",icon:"∿"},
-  {id:"tax",label:"Tax Center",icon:"%"},{id:"tools",label:"Tools",icon:"⚙"},
+  {id:"showmode",label:"Show Mode",icon:"🏪"},{id:"tax",label:"Tax Center",icon:"%"},{id:"tools",label:"Tools",icon:"⚙"},
   {id:"journal",label:"Journal",icon:"✎"},
 ];
 const ACCENT="#3B82F6",GREEN="#10B981",RED="#EF4444",AMBER="#F59E0B",PURPLE="#8B5CF6";
@@ -140,7 +140,7 @@ const KPI=({label,value,sub,color,icon,alert})=>{
 function Modal({title,onClose,children,wide}){
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={e=>e.target===e.currentTarget&&onClose()}><Card className={clx("w-full max-h-[92vh] overflow-y-auto",wide?"max-w-3xl":"max-w-2xl")}><div className="flex items-center justify-between p-5 border-b border-slate-700 sticky top-0 bg-slate-800 z-10"><h2 className="text-lg font-bold text-slate-100">{title}</h2><button onClick={onClose} className="text-slate-400 hover:text-slate-200 text-2xl leading-none cursor-pointer">×</button></div><div className="p-5">{children}</div></Card></div>);
 }
-const StatusBadge=({status})=>{const m={"For Sale":"green",PC:"blue","Trade Bait":"amber","At Consignment":"purple","Submitted for Grading":"gray",Sold:"red",Archived:"gray"};return <Badge color={m[status]||"gray"}>{status}</Badge>;};
+const StatusBadge=({status})=>{const m={"For Sale":"green",PC:"blue","Trade Bait":"amber","At Consignment":"purple","Submitted for Grading":"gray",Sold:"red",Traded:"orange",Archived:"gray"};return <Badge color={m[status]||"gray"}>{status}</Badge>;};
 function HoloBorder({children,className="",dimmed=false}){
   if(dimmed)return <div className={clx("rounded-xl border border-slate-700/40 bg-slate-800/30 opacity-50",className)}>{children}</div>;
   return(<div className={clx("relative rounded-xl p-[1px] overflow-hidden",className)} style={{background:"linear-gradient(135deg,#3B82F6 0%,#8B5CF6 25%,#EC4899 50%,#F59E0B 75%,#10B981 100%)"}}><div className="rounded-xl bg-slate-800">{children}</div></div>);
@@ -1802,6 +1802,7 @@ function HobbyFolioApp({authUser}){
       </aside>
       {sidebarOpen&&<div className="fixed inset-0 z-20 bg-black/50 lg:hidden" onClick={()=>setSidebarOpen(false)}/>}
       <main className="flex-1 min-w-0 overflow-x-hidden"><div className="max-w-6xl mx-auto px-4 py-6 lg:px-6">
+        {tab==="showmode"&&<ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/>}
         {tab==="portfolio"&&<PortfolioTab inventory={inventory} transactions={transactions} snapshots={snapshots} setSnapshots={setSnapshots}/>}
         {tab==="dashboard"&&<DashboardTab inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots} onNavigate={t=>setTab(t)}/>}
         {tab==="inventory"&&<InventoryTab inventory={inventory} setInventory={setInventory} setTransactions={setTransactions}/>}
@@ -1812,5 +1813,319 @@ function HobbyFolioApp({authUser}){
         {tab==="journal"&&<JournalTab journal={journal} setJournal={setJournal}/>}
       </div></main>
     </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHOW MODE TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
+  const[showTab,setShowTab]=useState("add");
+  const[search,setSearch]=useState("");
+  const[sellCard,setSellCard]=useState(null);
+  const[tradeModal,setTradeModal]=useState(false);
+  const[addedThisSession,setAddedThisSession]=useState([]);
+
+  // Add card form
+  const blank={player:"",year:"",set:"",cardNum:"",parallel:"",condition:"Raw",grade:"",certNum:"",buyPrice:"",buyFees:"",shippingIn:"",buyPlatform:"Show/LCS",status:"For Sale",notes:""};
+  const[f,setF]=useState({...blank});
+  const up=(k,v)=>setF(p=>({...p,[k]:v}));
+  const totalCost=(+f.buyPrice||0)+(+f.buyFees||0)+(+f.shippingIn||0);
+
+  const handleScan=p=>{setF(prev=>({...prev,player:p.player||prev.player,year:p.year||prev.year,set:p.set||prev.set,cardNum:p.cardNum||prev.cardNum,parallel:p.parallel||prev.parallel,grade:p.grade||prev.grade,certNum:p.certNum||prev.certNum,condition:p.condition||prev.condition}));};
+
+  const saveCard=()=>{
+    if(!f.player||!f.buyPrice)return;
+    const card={...f,id:uid(),buyDate:today(),buyPrice:totalCost,marketValue:totalCost};
+    setInventory(p=>[...p,card]);
+    const tx={id:uid(),type:"purchase",cardId:card.id,player:card.player,date:today(),platform:f.buyPlatform||"Show/LCS",salePrice:0,platformFeePct:0,shippingIn:+f.shippingIn||0,shippingOut:0,notes:`Show purchase${f.notes?" — "+f.notes:""}`,netProceeds:0,gl:0,purchasePrice:totalCost,gradingFee:0,tradeValueOut:0,tradeValueIn:0};
+    setTransactions(p=>[...p,tx]);
+    setAddedThisSession(p=>[card,...p]);
+    setF({...blank});
+  };
+
+  const handleSell=(card,sale)=>{
+    setInventory(p=>p.map(c=>c.id===card.id?{...c,status:"Sold",soldDate:sale.date,soldPrice:sale.salePrice}:c));
+    const fee=sale.salePrice*(sale.platformFeePct/100);
+    const net=sale.salePrice-fee-(sale.shippingOut||0);
+    const gl=net-(+card.buyPrice||0);
+    setTransactions(p=>[...p,{id:uid(),type:"sale",cardId:card.id,player:card.player,date:sale.date,platform:sale.platform,salePrice:sale.salePrice,platformFeePct:sale.platformFeePct,shippingOut:sale.shippingOut||0,shippingIn:0,notes:sale.notes||"",netProceeds:net,gl,purchasePrice:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0}]);
+    setSellCard(null);
+  };
+
+  const activeInv=[...inventory].filter(c=>isActive(c.status)&&c.status!=="PC").sort((a,b)=>{
+    const sp=s=>s==="For Sale"?0:s==="Trade Bait"?1:2;
+    return sp(a.status)-sp(b.status);
+  });
+  const filtered=search?activeInv.filter(c=>[c.player,c.year,c.set,c.certNum,c.grade].join(" ").toLowerCase().includes(search.toLowerCase())):activeInv;
+
+  return(<div className="space-y-4">
+    {/* Header */}
+    <div className="flex items-center justify-between">
+      <div><h1 className="text-2xl font-bold text-slate-100">🏪 Show Mode</h1><p className="text-xs text-slate-400">{new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</p></div>
+      <Btn variant="secondary" size="sm" onClick={()=>setTradeModal(true)}>🔄 Trade</Btn>
+    </div>
+
+    {/* Show Mode tabs */}
+    <div className="flex gap-2 border-b border-slate-700 pb-0">
+      {[["add","➕ Add Card"],["inventory","🃏 My Cards"],["sell","💰 Quick Sell"]].map(([id,label])=>(
+        <button key={id} onClick={()=>setShowTab(id)} className={clx("px-4 py-2.5 text-sm font-medium border-b-2 transition-all cursor-pointer",showTab===id?"border-blue-500 text-blue-300":"border-transparent text-slate-400 hover:text-slate-200")}>{label}</button>
+      ))}
+    </div>
+
+    {/* ── ADD CARD ── */}
+    {showTab==="add"&&<div className="space-y-4">
+      <Card className="p-4"><CardScanner onResult={handleScan}/></Card>
+      {f.player&&<Card className="p-3 border-emerald-500/30 bg-emerald-500/5"><div className="text-sm font-bold text-emerald-300">{f.player} {f.year} {f.grade||"Raw"}</div>{f.certNum&&<div className="text-xs text-slate-400">Cert: {f.certNum}</div>}</Card>}
+      <Card className="p-4 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2"><Input label="Player Name" value={f.player} onChange={v=>up("player",v)} required/></div>
+          <Input label="Year" value={f.year} onChange={v=>up("year",v)} placeholder="2024"/>
+          <Input label="Set" value={f.set} onChange={v=>up("set",v)} placeholder="Topps Chrome"/>
+          <Input label="Condition" value={f.condition} onChange={v=>up("condition",v)} options={CONDITIONS}/>
+          {f.condition==="Graded"&&<Input label="Grade" value={f.grade} onChange={v=>up("grade",v)} options={GRADES}/>}
+          {f.condition==="Graded"&&<Input label="Cert #" value={f.certNum} onChange={v=>up("certNum",v)}/>}
+          <Input label="Purchase Price ($)" value={f.buyPrice} onChange={v=>up("buyPrice",v)} type="number" required/>
+          <Input label="Fees Paid ($)" value={f.buyFees} onChange={v=>up("buyFees",v)} type="number" placeholder="0"/>
+          <Input label="Shipping In ($)" value={f.shippingIn} onChange={v=>up("shippingIn",v)} type="number" placeholder="0"/>
+          <Input label="Platform" value={f.buyPlatform} onChange={v=>up("buyPlatform",v)} options={PLATFORMS}/>
+          <div className="col-span-2"><Input label="Notes" value={f.notes} onChange={v=>up("notes",v)}/></div>
+        </div>
+        {totalCost>0&&<div className="flex items-center justify-between p-3 bg-slate-900 rounded-lg">
+          <span className="text-sm text-slate-400">Total Cost Basis</span>
+          <span className="font-mono font-bold text-blue-400 text-lg">{fmt$(totalCost)}</span>
+        </div>}
+        <Btn className="w-full" size="lg" disabled={!f.player||!f.buyPrice} onClick={saveCard}>Add Card to Inventory</Btn>
+      </Card>
+      {addedThisSession.length>0&&<Card className="p-4">
+        <div className="text-xs font-semibold text-slate-400 mb-2 uppercase">Added This Session ({addedThisSession.length})</div>
+        <div className="space-y-2">{addedThisSession.map(c=>(
+          <div key={c.id} className="flex items-center justify-between text-sm">
+            <div><div className="text-slate-200 font-medium">{c.player} {c.year}</div><div className="text-xs text-slate-500">{c.grade||"Raw"} {c.certNum?`· ${c.certNum}`:""}</div></div>
+            <span className="font-mono text-emerald-400">{fmt$(c.buyPrice)}</span>
+          </div>
+        ))}</div>
+      </Card>}
+    </div>}
+
+    {/* ── MY CARDS (inventory at show) ── */}
+    {showTab==="inventory"&&<div className="space-y-3">
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search player, cert#, grade..." className="bg-slate-900 border border-slate-600 text-slate-200 rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:border-blue-500"/>
+      <div className="text-xs text-slate-500">{filtered.length} active cards</div>
+      <div className="space-y-2">{filtered.length===0&&<Card className="p-8 text-center text-slate-500">No active cards</Card>}
+        {filtered.map(card=>{
+          const mv=+card.marketValue||+card.buyPrice;
+          const gl=mv-(+card.buyPrice||0);
+          return(<Card key={card.id} className="p-3">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-slate-100 truncate">{card.player} {card.year}</div>
+                <div className="text-xs text-slate-400">{card.set}{card.parallel?` · ${card.parallel}`:""}</div>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {card.grade&&<Badge color="purple">{card.grade}</Badge>}
+                  {card.certNum&&<span className="text-xs font-mono text-slate-500">#{card.certNum}</span>}
+                  <StatusBadge status={card.status}/>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-xs text-slate-500">Cost</div>
+                <div className="font-mono font-bold text-slate-200">{fmt$(card.buyPrice)}</div>
+                <div className="text-xs text-slate-500 mt-1">Market</div>
+                <div className="font-mono font-bold text-blue-400">{fmt$(mv)}</div>
+                <div className={clx("font-mono text-xs font-semibold",gl>=0?"text-emerald-400":"text-red-400")}>{gl>=0?"+":""}{fmt$(gl)}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Btn size="sm" variant="success" className="flex-1" onClick={()=>{setSellCard(card);setShowTab("sell");}}>💰 Sell</Btn>
+              <Btn size="sm" variant="amber" className="flex-1" onClick={()=>setTradeModal(card)}>🔄 Trade</Btn>
+            </div>
+          </Card>);
+        })}
+      </div>
+    </div>}
+
+    {/* ── QUICK SELL ── */}
+    {showTab==="sell"&&<div className="space-y-3">
+      {!sellCard&&<div className="space-y-2">
+        <div className="text-sm text-slate-400 mb-2">Select a card to sell:</div>
+        {activeInv.map(card=>(
+          <Card key={card.id} className="p-3 cursor-pointer hover:border-emerald-500/50 transition-colors" onClick={()=>setSellCard(card)}>
+            <div className="flex items-center justify-between">
+              <div><div className="font-medium text-slate-200">{card.player} {card.year}</div><div className="text-xs text-slate-400">{card.grade||"Raw"} {card.certNum?`· #${card.certNum}`:""}</div></div>
+              <div className="text-right"><div className="font-mono text-blue-400">{fmt$(card.marketValue||card.buyPrice)}</div><div className="text-xs text-slate-500">cost {fmt$(card.buyPrice)}</div></div>
+            </div>
+          </Card>
+        ))}
+      </div>}
+      {sellCard&&<div className="space-y-3">
+        <div className="flex items-center gap-2"><button onClick={()=>setSellCard(null)} className="text-slate-400 hover:text-slate-200 cursor-pointer">← Back</button><span className="text-slate-400 text-sm">Selling: <span className="text-slate-200 font-medium">{sellCard.player} {sellCard.year}</span></span></div>
+        <SellCardModal card={sellCard} onSave={sale=>handleSell(sellCard,sale)} onClose={()=>setSellCard(null)}/>
+      </div>}
+    </div>}
+
+    {/* ── TRADE MODAL ── */}
+    {tradeModal&&<Modal title="Record Trade" onClose={()=>setTradeModal(false)} wide>
+      <TradeWizard inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} initialCard={typeof tradeModal==="object"?tradeModal:null} onClose={()=>setTradeModal(false)}/>
+    </Modal>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRADE WIZARD
+// ═══════════════════════════════════════════════════════════════════════════════
+function TradeWizard({inventory,setInventory,transactions,setTransactions,initialCard,onClose}){
+  const[step,setStep]=useState("out");
+  const[outCards,setOutCards]=useState(initialCard?[initialCard]:[]);
+  const[inCards,setInCards]=useState([{id:uid(),player:"",year:"",set:"",grade:"",certNum:"",condition:"Raw",parallel:"",notes:""}]);
+  const[splitMode,setSplitMode]=useState("equal"); // equal or manual
+  const[manualSplit,setManualSplit]=useState({});
+
+  const activeInv=inventory.filter(c=>isActive(c.status)&&c.status!=="PC");
+  const totalOutValue=outCards.reduce((s,c)=>s+(+c.marketValue||+c.buyPrice||0),0);
+  const totalOutCost=outCards.reduce((s,c)=>s+(+c.buyPrice||0),0);
+
+  const toggleOut=card=>{
+    setOutCards(p=>p.find(c=>c.id===card.id)?p.filter(c=>c.id!==card.id):[...p,card]);
+  };
+
+  const addInCard=()=>setInCards(p=>[...p,{id:uid(),player:"",year:"",set:"",grade:"",certNum:"",condition:"Raw",parallel:"",notes:""}]);
+  const removeInCard=id=>setInCards(p=>p.filter(c=>c.id!==id));
+  const updateInCard=(id,k,v)=>setInCards(p=>p.map(c=>c.id===id?{...c,[k]:v}:c));
+
+  const getBasis=id=>{
+    if(splitMode==="manual")return +manualSplit[id]||0;
+    return inCards.length>0?totalOutValue/inCards.length:0;
+  };
+
+  const confirmTrade=()=>{
+    // Mark outgoing cards as Traded
+    const outIds=new Set(outCards.map(c=>c.id));
+    setInventory(p=>p.map(c=>outIds.has(c.id)?{...c,status:"Traded",tradedDate:today()}:c));
+    // Add incoming cards with cost basis
+    const newCards=inCards.filter(c=>c.player).map(c=>({
+      ...c,id:uid(),buyDate:today(),buyPlatform:"Trade",
+      buyPrice:getBasis(c.id),marketValue:getBasis(c.id),
+      status:"For Sale",notes:`Received in trade${c.notes?" — "+c.notes:""}`,
+    }));
+    setInventory(p=>[...p,...newCards]);
+    // Log trade transaction
+    const tx={
+      id:uid(),type:"trade",date:today(),
+      player:outCards.map(c=>c.player).join(", "),
+      tradeCardOut:outCards.map(c=>`${c.player} ${c.year} ${c.grade||"Raw"}`).join(", "),
+      tradeCardIn:newCards.map(c=>`${c.player} ${c.year} ${c.grade||"Raw"}`).join(", "),
+      tradeValueOut:totalOutValue,tradeValueIn:totalOutValue,
+      notes:`Traded ${outCards.length} card(s) for ${newCards.length} card(s). Basis transferred: ${fmt$(totalOutValue)}`,
+      salePrice:0,purchasePrice:0,platformFeePct:0,shippingOut:0,shippingIn:0,gradingFee:0,gl:0,
+    };
+    setTransactions(p=>[...p,tx]);
+    // Also log purchase txs for incoming cards
+    newCards.forEach(c=>{
+      setTransactions(p=>[...p,{id:uid(),type:"purchase",cardId:c.id,player:c.player,date:today(),platform:"Trade",purchasePrice:c.buyPrice,salePrice:0,platformFeePct:0,shippingOut:0,shippingIn:0,notes:"Received in trade",netProceeds:0,gl:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0}]);
+    });
+    onClose();
+  };
+
+  return(<div className="space-y-5">
+    {/* Steps */}
+    <div className="flex gap-2">
+      {[["out","1. Cards Going Out"],["in","2. Cards Coming In"],["confirm","3. Confirm"]].map(([id,label])=>(
+        <div key={id} className={clx("flex-1 text-center py-2 rounded-lg text-xs font-medium",step===id?"bg-blue-600 text-white":"bg-slate-700 text-slate-400")}>{label}</div>
+      ))}
+    </div>
+
+    {/* Step 1: Cards going out */}
+    {step==="out"&&<div className="space-y-3">
+      <div className="text-sm text-slate-400">Select cards you are giving up in this trade:</div>
+      <div className="space-y-2 max-h-80 overflow-y-auto">{activeInv.map(card=>{
+        const selected=outCards.find(c=>c.id===card.id);
+        const mv=+card.marketValue||+card.buyPrice;
+        return(<div key={card.id} onClick={()=>toggleOut(card)} className={clx("p-3 rounded-lg border cursor-pointer transition-all",selected?"border-blue-500 bg-blue-500/10":"border-slate-700 hover:border-slate-500")}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={clx("w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0",selected?"border-blue-400 bg-blue-400":"border-slate-500")}>
+                {selected&&<span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <div><div className="text-sm font-medium text-slate-200">{card.player} {card.year}</div><div className="text-xs text-slate-400">{card.grade||"Raw"} {card.certNum?`· #${card.certNum}`:""}</div></div>
+            </div>
+            <div className="text-right"><div className="font-mono text-blue-400 text-sm">{fmt$(mv)}</div><div className="text-xs text-slate-500">cost {fmt$(card.buyPrice)}</div></div>
+          </div>
+        </div>);
+      })}</div>
+      {outCards.length>0&&<div className="p-3 bg-slate-900 rounded-lg flex justify-between items-center">
+        <span className="text-sm text-slate-400">{outCards.length} card(s) · Total market value</span>
+        <span className="font-mono font-bold text-blue-400">{fmt$(totalOutValue)}</span>
+      </div>}
+      <div className="flex gap-3 justify-end">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn disabled={outCards.length===0} onClick={()=>setStep("in")}>Next →</Btn>
+      </div>
+    </div>}
+
+    {/* Step 2: Cards coming in */}
+    {step==="in"&&<div className="space-y-4">
+      <div className="p-3 bg-slate-900 rounded-lg"><div className="text-xs text-slate-400 mb-1">Total basis to split across incoming cards</div><div className="font-mono font-bold text-blue-400 text-xl">{fmt$(totalOutValue)}</div></div>
+      <div className="flex gap-2 items-center">
+        <span className="text-xs text-slate-400">Split mode:</span>
+        <button onClick={()=>setSplitMode("equal")} className={clx("px-3 py-1 rounded text-xs font-medium border cursor-pointer",splitMode==="equal"?"bg-blue-600 border-blue-500 text-white":"bg-slate-700 border-slate-600 text-slate-300")}>Equal Split</button>
+        <button onClick={()=>setSplitMode("manual")} className={clx("px-3 py-1 rounded text-xs font-medium border cursor-pointer",splitMode==="manual"?"bg-blue-600 border-blue-500 text-white":"bg-slate-700 border-slate-600 text-slate-300")}>Manual %</button>
+      </div>
+      <div className="space-y-4">{inCards.map((card,i)=>(
+        <Card key={card.id} className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-semibold text-slate-200">Incoming Card {i+1}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Basis:</span>
+              <span className="font-mono font-bold text-emerald-400">{fmt$(getBasis(card.id))}</span>
+              {inCards.length>1&&<button onClick={()=>removeInCard(card.id)} className="text-red-400 text-sm cursor-pointer ml-2">×</button>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><Input label="Player Name" value={card.player} onChange={v=>updateInCard(card.id,"player",v)} required/></div>
+            <Input label="Year" value={card.year} onChange={v=>updateInCard(card.id,"year",v)}/>
+            <Input label="Set" value={card.set} onChange={v=>updateInCard(card.id,"set",v)}/>
+            <Input label="Condition" value={card.condition} onChange={v=>updateInCard(card.id,"condition",v)} options={CONDITIONS}/>
+            {card.condition==="Graded"&&<Input label="Grade" value={card.grade} onChange={v=>updateInCard(card.id,"grade",v)} options={GRADES}/>}
+            {card.condition==="Graded"&&<Input label="Cert #" value={card.certNum} onChange={v=>updateInCard(card.id,"certNum",v)}/>}
+            {splitMode==="manual"&&<div className="col-span-2"><Input label="Basis for this card ($)" value={manualSplit[card.id]||""} onChange={v=>setManualSplit(p=>({...p,[card.id]:v}))} type="number"/></div>}
+          </div>
+        </Card>
+      ))}</div>
+      <Btn variant="secondary" size="sm" onClick={addInCard}>+ Add Another Incoming Card</Btn>
+      <div className="flex gap-3 justify-end">
+        <Btn variant="secondary" onClick={()=>setStep("out")}>← Back</Btn>
+        <Btn disabled={inCards.filter(c=>c.player).length===0} onClick={()=>setStep("confirm")}>Review →</Btn>
+      </div>
+    </div>}
+
+    {/* Step 3: Confirm */}
+    {step==="confirm"&&<div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="p-4 border-red-500/30">
+          <div className="text-xs font-bold text-red-400 mb-2 uppercase">Going Out</div>
+          <div className="space-y-2">{outCards.map(c=>(
+            <div key={c.id}><div className="text-sm text-slate-200">{c.player} {c.year}</div><div className="text-xs text-slate-400">{c.grade||"Raw"} · {fmt$(c.marketValue||c.buyPrice)}</div></div>
+          ))}</div>
+          <div className="border-t border-slate-700 mt-3 pt-2 flex justify-between text-sm font-bold"><span className="text-slate-300">Total</span><span className="font-mono text-red-400">{fmt$(totalOutValue)}</span></div>
+        </Card>
+        <Card className="p-4 border-emerald-500/30">
+          <div className="text-xs font-bold text-emerald-400 mb-2 uppercase">Coming In</div>
+          <div className="space-y-2">{inCards.filter(c=>c.player).map(c=>(
+            <div key={c.id}><div className="text-sm text-slate-200">{c.player} {c.year}</div><div className="text-xs text-slate-400">{c.grade||"Raw"} · basis {fmt$(getBasis(c.id))}</div></div>
+          ))}</div>
+          <div className="border-t border-slate-700 mt-3 pt-2 flex justify-between text-sm font-bold"><span className="text-slate-300">Basis</span><span className="font-mono text-emerald-400">{fmt$(totalOutValue)}</span></div>
+        </Card>
+      </div>
+      <Card className="p-3 bg-slate-900/50 text-xs text-slate-400 space-y-1">
+        <div>• {outCards.length} card(s) marked as <span className="text-orange-400">Traded</span></div>
+        <div>• {inCards.filter(c=>c.player).length} card(s) added to inventory</div>
+        <div>• Cost basis of {fmt$(totalOutValue)} transferred to incoming cards</div>
+        <div>• Trade transaction logged for your records</div>
+      </Card>
+      <div className="flex gap-3 justify-end">
+        <Btn variant="secondary" onClick={()=>setStep("in")}>← Back</Btn>
+        <Btn variant="success" onClick={confirmTrade}>Confirm Trade</Btn>
+      </div>
+    </div>}
   </div>);
 }
