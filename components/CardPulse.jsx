@@ -27,7 +27,7 @@ const COLLECTIBLES_LT_RATE=0.28;
 const NAV_ITEMS=[
   {id:"dashboard",label:"Dashboard",icon:"▦"},{id:"portfolio",label:"Portfolio",icon:"◉"},{id:"inventory",label:"Inventory",icon:"⊞"},
   {id:"transactions",label:"Transactions",icon:"⇄"},{id:"pnl",label:"P&L",icon:"∿"},
-  {id:"showmode",label:"Show Mode",icon:"🏪"},{id:"tax",label:"Tax Center",icon:"%"},{id:"tools",label:"Tools",icon:"⚙"},
+  {id:"showmode",label:"Show Mode",icon:"🏪"},{id:"shows",label:"Shows",icon:"📍"},{id:"tax",label:"Tax Center",icon:"%"},{id:"tools",label:"Tools",icon:"⚙"},
   {id:"journal",label:"Journal",icon:"✎"},
 ];
 const ACCENT="#3B82F6",GREEN="#10B981",RED="#EF4444",AMBER="#F59E0B",PURPLE="#8B5CF6";
@@ -1791,9 +1791,11 @@ function CardPulseApp({authUser}){
   const[expenses,setExpenses,expL]=usePersist("cv_expenses",[]);
   const[snapshots,setSnapshots,snapL]=usePersist("cv_snapshots",[]);
   const[journal,setJournal,jL]=usePersist("cv_journal",[]);
-  const loaded=invL&&txL&&expL&&snapL&&jL;
+  const[shows,setShows,showsL]=usePersist("cv_shows",[]);
+  const[showSessions,setShowSessions,sessL]=usePersist("cv_show_sessions",[]);
+  const loaded=invL&&txL&&expL&&snapL&&jL&&showsL&&sessL;
   if(!loaded)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-3"><div className="text-4xl animate-pulse">🃏</div><div className="text-slate-300 font-medium">Loading CardPulse...</div></div></div>;
-  if(isMobile)return <MobileLayout inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots} authUser={authUser}/>;
+  if(isMobile)return <MobileLayout inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots} authUser={authUser} shows={shows} setShows={setShows} showSessions={showSessions} setShowSessions={setShowSessions}/>;
   return(<div className="min-h-screen bg-slate-900 text-slate-200" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
     <style>{`*{box-sizing:border-box;} ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:#0F172A;} ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;} .holo-shimmer{background:linear-gradient(135deg,#3B82F6 0%,#8B5CF6 25%,#EC4899 50%,#F59E0B 75%,#10B981 100%);background-size:200% 200%;animation:holo 4s ease infinite;} @keyframes holo{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
     <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 sticky top-0 z-40 gap-2">
@@ -1810,7 +1812,9 @@ function CardPulseApp({authUser}){
       </aside>
       {sidebarOpen&&<div className="fixed inset-0 z-20 bg-black/50 lg:hidden" onClick={()=>setSidebarOpen(false)}/>}
       <main className="flex-1 min-w-0 overflow-x-hidden"><div className="max-w-6xl mx-auto px-4 py-6 lg:px-6">
-        {tab==="showmode"&&<ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/>}
+        {tab==="shows"&&<ShowsTab inventory={inventory} transactions={transactions} showSessions={showSessions} setShowSessions={setShowSessions} shows={shows} setShows={setShows}/>
+}
+        {tab==="showmode"&&<ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} showSessions={showSessions} setShowSessions={setShowSessions} shows={shows} setShows={setShows}/>}
         {tab==="portfolio"&&<PortfolioTab inventory={inventory} transactions={transactions} snapshots={snapshots} setSnapshots={setSnapshots}/>}
         {tab==="dashboard"&&<DashboardTab inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots} onNavigate={t=>setTab(t)}/>}
         {tab==="inventory"&&<InventoryTab inventory={inventory} setInventory={setInventory} setTransactions={setTransactions}/>}
@@ -1827,12 +1831,15 @@ function CardPulseApp({authUser}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHOW MODE TAB
 // ═══════════════════════════════════════════════════════════════════════════════
-function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
+function ShowModeTab({inventory,setInventory,transactions,setTransactions,showSessions,setShowSessions,shows,setShows}){
   const[showTab,setShowTab]=useState("add");
   const[search,setSearch]=useState("");
   const[sellCard,setSellCard]=useState(null);
   const[tradeModal,setTradeModal]=useState(false);
   const[addedThisSession,setAddedThisSession]=useState([]);
+  const[showSessionPicker,setShowSessionPicker]=useState(false);
+  const activeSession=(showSessions||[]).find(s=>!s.closed);
+  const activeShow=activeSession?(shows||[]).find(s=>s.id===activeSession.showId):null;
 
   // Add card form
   const blank={player:"",year:"",set:"",cardNum:"",parallel:"",condition:"Raw",grade:"",certNum:"",buyPrice:"",buyFees:"",shippingIn:"",buyPlatform:"Show/LCS",status:"For Sale",notes:""};
@@ -1846,7 +1853,7 @@ function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
     if(!f.player||!f.buyPrice)return;
     const card={...f,id:uid(),buyDate:today(),buyPrice:totalCost,marketValue:totalCost};
     setInventory(p=>[...p,card]);
-    const tx={id:uid(),type:"purchase",cardId:card.id,player:card.player,date:today(),platform:f.buyPlatform||"Show/LCS",salePrice:0,platformFeePct:0,shippingIn:+f.shippingIn||0,shippingOut:0,notes:`Show purchase${f.notes?" — "+f.notes:""}`,netProceeds:0,gl:0,purchasePrice:totalCost,gradingFee:0,tradeValueOut:0,tradeValueIn:0};
+    const tx={id:uid(),type:"purchase",cardId:card.id,player:card.player,date:today(),platform:f.buyPlatform||"Show/LCS",salePrice:0,platformFeePct:0,shippingIn:+f.shippingIn||0,shippingOut:0,notes:`Show purchase${f.notes?" — "+f.notes:""}`,netProceeds:0,gl:0,purchasePrice:totalCost,gradingFee:0,tradeValueOut:0,tradeValueIn:0,showSessionId:activeSession?.id,showId:activeSession?.showId,showName:activeShow?.name};
     setTransactions(p=>[...p,tx]);
     setAddedThisSession(p=>[card,...p]);
     setF({...blank});
@@ -1857,7 +1864,7 @@ function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
     const fee=sale.salePrice*(sale.platformFeePct/100);
     const net=sale.salePrice-fee-(sale.shippingOut||0);
     const gl=net-(+card.buyPrice||0);
-    setTransactions(p=>[...p,{id:uid(),type:"sale",cardId:card.id,player:card.player,date:sale.date,platform:sale.platform,salePrice:sale.salePrice,platformFeePct:sale.platformFeePct,shippingOut:sale.shippingOut||0,shippingIn:0,notes:sale.notes||"",netProceeds:net,gl,purchasePrice:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0}]);
+    setTransactions(p=>[...p,{id:uid(),type:"sale",cardId:card.id,player:card.player,date:sale.date,platform:sale.platform,salePrice:sale.salePrice,platformFeePct:sale.platformFeePct,shippingOut:sale.shippingOut||0,shippingIn:0,notes:sale.notes||"",netProceeds:net,gl,purchasePrice:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0,showSessionId:activeSession?.id,showId:activeSession?.showId,showName:activeShow?.name}]);
     setSellCard(null);
   };
 
@@ -1871,8 +1878,9 @@ function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
     {/* Header */}
     <div className="flex items-center justify-between">
       <div><h1 className="text-2xl font-bold text-slate-100">🏪 Show Mode</h1><p className="text-xs text-slate-400">{new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}</p></div>
-      <Btn variant="secondary" size="sm" onClick={()=>setTradeModal(true)}>🔄 Trade</Btn>
+      <div className="flex gap-2"><Btn variant="secondary" size="sm" onClick={()=>setShowSessionPicker(true)}>📍 Session</Btn><Btn variant="secondary" size="sm" onClick={()=>setTradeModal(true)}>🔄 Trade</Btn></div>
     </div>
+    {activeSession?<Card className="p-3 border-emerald-500/40 bg-emerald-500/5"><div className="flex items-center justify-between"><div><div className="text-sm font-bold text-emerald-300">📍 {activeShow?.name||"Show"} — Day {activeSession.dayNum}</div><div className="text-xs text-slate-400">{activeSession.date} · Cash: {fmt$(activeSession.startingCash||0)}</div></div><Btn size="sm" variant="amber" onClick={()=>{setShowSessions(p=>p.map(s=>s.id===activeSession.id?{...s,closed:true,closedAt:today()}:s));}}>End Day</Btn></div></Card>:<Card className="p-3 border-amber-500/40 bg-amber-500/5 cursor-pointer" onClick={()=>setShowSessionPicker(true)}><div className="text-sm text-amber-300 font-medium">📍 No active session — tap to start tracking a show</div><div className="text-xs text-slate-400 mt-0.5">Tag transactions to a show for daily analysis</div></Card>}
 
     {/* Show Mode tabs */}
     <div className="flex gap-2 border-b border-slate-700 pb-0">
@@ -1988,6 +1996,9 @@ function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
     {/* ── TRADE MODAL ── */}
     {tradeModal&&<Modal title="Record Trade" onClose={()=>setTradeModal(false)} wide>
       <TradeWizard inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} initialCard={typeof tradeModal==="object"?tradeModal:null} onClose={()=>setTradeModal(false)}/>
+    </Modal>}
+    {showSessionPicker&&<Modal title="Show Sessions" onClose={()=>setShowSessionPicker(false)}>
+      <ShowSessionPicker shows={shows} setShows={setShows} showSessions={showSessions} setShowSessions={setShowSessions} onClose={()=>setShowSessionPicker(false)}/>
     </Modal>}
   </div>);
 }
@@ -2155,7 +2166,7 @@ function TradeWizard({inventory,setInventory,transactions,setTransactions,initia
 // ═══════════════════════════════════════════════════════════════════════════════
 // MOBILE LAYOUT
 // ═══════════════════════════════════════════════════════════════════════════════
-function MobileLayout({inventory,setInventory,transactions,setTransactions,expenses,snapshots,setSnapshots,authUser}){
+function MobileLayout({inventory,setInventory,transactions,setTransactions,expenses,snapshots,setSnapshots,authUser,shows,setShows,showSessions,setShowSessions}){
   const[tab,setTab]=useState("show");
 
   const TABS=[
@@ -2190,7 +2201,7 @@ function MobileLayout({inventory,setInventory,transactions,setTransactions,expen
       <div className="flex-1 overflow-y-auto pb-24">
         {tab==="home"&&<MobileHome inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots}/>}
         {tab==="cards"&&<MobileCards inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/>}
-        {tab==="show"&&<div className="px-4 py-4"><ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/></div>}
+        {tab==="show"&&<div className="px-4 py-4"><ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} showSessions={showSessions} setShowSessions={setShowSessions} shows={shows} setShows={setShows}/></div>}
         {tab==="reports"&&<MobileReports inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots}/>}
         {tab==="more"&&<MobileMore authUser={authUser}/>}
       </div>
@@ -2485,5 +2496,240 @@ function MobileMore({authUser}){
       <div className="flex justify-between"><span>Support</span><span className="text-blue-400">cardpulse.cards</span></div>
     </Card>
     <button onClick={async()=>{await supabase.auth.signOut();window.location.href="/";}} className="w-full py-3 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 text-sm font-medium cursor-pointer hover:bg-red-500/20 transition-colors">Sign Out</button>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHOW SESSION PICKER (modal inside Show Mode)
+// ═══════════════════════════════════════════════════════════════════════════════
+function ShowSessionPicker({shows,setShows,showSessions,setShowSessions,onClose}){
+  const[view,setView]=useState("list"); // list | newshow | newsession
+  const[sf,setSf]=useState({name:"",location:"",startDate:today(),endDate:today()});
+  const[sessF,setSessF]=useState({showId:"",date:today(),dayNum:1,startingCash:"",entryFee:"",notes:""});
+
+  const activeSession=showSessions.find(s=>!s.closed);
+
+  const createShow=()=>{
+    if(!sf.name)return;
+    const s={id:uid(),...sf,createdAt:today()};
+    setShows(p=>[...p,s]);
+    setSessF(p=>({...p,showId:s.id}));
+    setView("newsession");
+  };
+
+  const startSession=()=>{
+    if(!sessF.showId||!sessF.date)return;
+    // Close any open session first
+    if(activeSession)setShowSessions(p=>p.map(s=>s.id===activeSession.id?{...s,closed:true,closedAt:today()}:s));
+    const show=shows.find(s=>s.id===sessF.showId);
+    const existingDays=showSessions.filter(s=>s.showId===sessF.showId).length;
+    const sess={id:uid(),...sessF,showName:show?.name||"",dayNum:existingDays+1,startingCash:+sessF.startingCash||0,entryFee:+sessF.entryFee||0,closed:false,createdAt:today()};
+    setShowSessions(p=>[...p,sess]);
+    // Log entry fee as expense if provided
+    if(sess.entryFee>0){}
+    onClose();
+  };
+
+  return(<div className="space-y-4">
+    {activeSession&&<Card className="p-3 border-emerald-500/40 bg-emerald-500/5">
+      <div className="text-xs font-bold text-emerald-400 mb-1">Currently Active</div>
+      <div className="text-sm text-slate-200">{activeSession.showName} — Day {activeSession.dayNum}</div>
+      <div className="text-xs text-slate-400">{activeSession.date} · Cash: {fmt$(activeSession.startingCash)}</div>
+      <Btn size="sm" variant="danger" className="mt-2" onClick={()=>{setShowSessions(p=>p.map(s=>s.id===activeSession.id?{...s,closed:true,closedAt:today()}:s));onClose();}}>End This Session</Btn>
+    </Card>}
+
+    {view==="list"&&<div className="space-y-3">
+      <div className="flex gap-2">
+        <Btn onClick={()=>setView("newshow")} className="flex-1">+ New Show</Btn>
+        {shows.length>0&&<Btn variant="secondary" onClick={()=>setView("newsession")} className="flex-1">+ New Day</Btn>}
+      </div>
+      {shows.length===0&&<div className="text-center py-6 text-slate-500 text-sm">No shows yet — create one to start tracking</div>}
+      {[...shows].reverse().map(show=>{
+        const sessions=showSessions.filter(s=>s.showId===show.id);
+        return(<Card key={show.id} className="p-4">
+          <div className="flex items-start justify-between mb-2">
+            <div><div className="font-bold text-slate-200">{show.name}</div><div className="text-xs text-slate-400">{show.location} · {show.startDate}{show.endDate!==show.startDate?` → ${show.endDate}`:""}</div></div>
+            <Badge color={sessions.some(s=>!s.closed)?"green":"gray"}>{sessions.some(s=>!s.closed)?"Active":sessions.length+" day(s)"}</Badge>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <Btn size="sm" variant="secondary" className="flex-1" onClick={()=>{setSessF(p=>({...p,showId:show.id,date:today(),dayNum:sessions.length+1}));setView("newsession");}}>+ Add Day</Btn>
+          </div>
+        </Card>);
+      })}
+    </div>}
+
+    {view==="newshow"&&<div className="space-y-4">
+      <div className="text-sm font-bold text-slate-200">Create New Show</div>
+      <Input label="Show Name" value={sf.name} onChange={v=>setSf(p=>({...p,name:v}))} placeholder="Card Bash 2026" required/>
+      <Input label="Location" value={sf.location} onChange={v=>setSf(p=>({...p,location:v}))} placeholder="City, Venue"/>
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="Start Date" value={sf.startDate} onChange={v=>setSf(p=>({...p,startDate:v}))} type="date"/>
+        <Input label="End Date" value={sf.endDate} onChange={v=>setSf(p=>({...p,endDate:v}))} type="date"/>
+      </div>
+      <div className="flex gap-3 justify-end">
+        <Btn variant="secondary" onClick={()=>setView("list")}>Back</Btn>
+        <Btn disabled={!sf.name} onClick={createShow}>Create & Start Day 1</Btn>
+      </div>
+    </div>}
+
+    {view==="newsession"&&<div className="space-y-4">
+      <div className="text-sm font-bold text-slate-200">Start a Show Day</div>
+      {shows.length>0&&<Input label="Show" value={sessF.showId} onChange={v=>setSessF(p=>({...p,showId:v}))} options={shows.map(s=>s.id)} required/>}
+      {sessF.showId&&shows.find(s=>s.id===sessF.showId)&&<div className="text-xs text-blue-400">{shows.find(s=>s.id===sessF.showId)?.name}</div>}
+      <Input label="Date" value={sessF.date} onChange={v=>setSessF(p=>({...p,date:v}))} type="date"/>
+      <Input label="Starting Cash ($)" value={sessF.startingCash} onChange={v=>setSessF(p=>({...p,startingCash:v}))} type="number" placeholder="0" hint="Cash you are bringing to the show"/>
+      <Input label="Table / Entry Fee ($)" value={sessF.entryFee} onChange={v=>setSessF(p=>({...p,entryFee:v}))} type="number" placeholder="0" hint="Logs as an expense automatically"/>
+      <Input label="Notes" value={sessF.notes} onChange={v=>setSessF(p=>({...p,notes:v}))} placeholder="Goals for the day..."/>
+      <div className="flex gap-3 justify-end">
+        <Btn variant="secondary" onClick={()=>setView("list")}>Back</Btn>
+        <Btn disabled={!sessF.showId||!sessF.date} onClick={startSession}>Start Day</Btn>
+      </div>
+    </div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SHOWS TAB (desktop + mobile)
+// ═══════════════════════════════════════════════════════════════════════════════
+function ShowsTab({inventory,transactions,showSessions,setShowSessions,shows,setShows}){
+  const[selectedShow,setSelectedShow]=useState(null);
+  const[selectedSession,setSelectedSession]=useState(null);
+
+  const getSessionStats=(session)=>{
+    const txs=transactions.filter(t=>t.showSessionId===session.id);
+    const sales=txs.filter(t=>t.type==="sale");
+    const purchases=txs.filter(t=>t.type==="purchase");
+    const rev=sales.reduce((s,t)=>s+(+(t.salePrice||t.sale_price||0)),0);
+    const spent=purchases.reduce((s,t)=>s+(+(t.purchasePrice||t.purchase_price||0)),0);
+    const cogs=sales.reduce((s,t)=>{const c=inventory.find(x=>x.id===(t.cardId||t.card_id));return s+(c?+(c.buyPrice||c.buy_price||0):0);},0);
+    const profit=rev-cogs-session.entryFee;
+    const netCash=rev-spent;
+    const endCash=(session.startingCash||0)+netCash;
+    const wins=sales.filter(t=>+(t.gl||0)>0).length;
+    const bestSale=[...sales].sort((a,b)=>+(b.gl||0)-+(a.gl||0))[0];
+    return{txs,sales,purchases,rev,spent,cogs,profit,netCash,endCash,wins,bestSale,cardsBought:purchases.length,cardsSold:sales.length};
+  };
+
+  const getShowStats=(show)=>{
+    const sessions=showSessions.filter(s=>s.showId===show.id);
+    const all=sessions.map(getSessionStats);
+    return{
+      sessions:sessions.length,
+      rev:all.reduce((s,d)=>s+d.rev,0),
+      spent:all.reduce((s,d)=>s+d.spent,0),
+      profit:all.reduce((s,d)=>s+d.profit,0),
+      cardsBought:all.reduce((s,d)=>s+d.cardsBought,0),
+      cardsSold:all.reduce((s,d)=>s+d.cardsSold,0),
+      wins:all.reduce((s,d)=>s+d.wins,0),
+      totalSales:all.reduce((s,d)=>s+d.sales.length,0),
+    };
+  };
+
+  if(selectedSession){
+    const s=selectedSession;
+    const st=getSessionStats(s);
+    const show=shows.find(x=>x.id===s.showId);
+    return(<div className="space-y-5">
+      <button onClick={()=>setSelectedSession(null)} className="text-slate-400 hover:text-slate-200 text-sm cursor-pointer">← Back</button>
+      <div><h1 className="text-2xl font-bold text-slate-100">{show?.name} — Day {s.dayNum}</h1><p className="text-sm text-slate-400">{s.date} · {s.location||show?.location}</p></div>
+      {/* Day KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KPI label="Revenue" value={fmt$(st.rev,0)} color="blue" sub={`${st.cardsSold} sold`}/>
+        <KPI label="Spent" value={fmt$(st.spent,0)} color="white" sub={`${st.cardsBought} bought`}/>
+        <KPI label="Day Profit" value={fmt$(st.profit,0)} color={st.profit>=0?"green":"red"} sub="after COGS + fee"/>
+        <KPI label="Net Cash" value={`${st.netCash>=0?"+":""}${fmt$(st.netCash,0)}`} color={st.netCash>=0?"green":"red"} sub="rev minus spent"/>
+      </div>
+      {/* Cash reconciliation */}
+      <Card className="p-5">
+        <h2 className="text-sm font-bold text-slate-300 mb-3">Cash Reconciliation</h2>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between"><span className="text-slate-400">Starting Cash</span><span className="font-mono text-slate-200">{fmt$(s.startingCash||0)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Cash Sales</span><span className="font-mono text-emerald-400">+{fmt$(st.sales.filter(t=>(t.platform||"").toLowerCase()==="cash").reduce((s,t)=>s+(+(t.salePrice||0)),0))}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Cash Spent</span><span className="font-mono text-red-400">-{fmt$(st.spent)}</span></div>
+          {s.entryFee>0&&<div className="flex justify-between"><span className="text-slate-400">Table Fee</span><span className="font-mono text-red-400">-{fmt$(s.entryFee)}</span></div>}
+          <div className="flex justify-between pt-2 border-t border-slate-700 font-bold"><span className="text-slate-200">Expected Cash on Hand</span><span className="font-mono text-blue-400">{fmt$(st.endCash)}</span></div>
+        </div>
+      </Card>
+      {/* Transactions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-400 uppercase mb-3">Sold ({st.sales.length})</div>
+          {st.sales.length===0&&<div className="text-slate-500 text-xs">No sales this session</div>}
+          <div className="space-y-2">{st.sales.map(t=>{const c=inventory.find(x=>x.id===(t.cardId||t.card_id));const gl=+(t.gl||0);return(<div key={t.id} className="flex justify-between text-xs"><div className="min-w-0"><div className="text-slate-200 truncate">{c?`${c.player} ${c.year||""}`:t.player||"—"}</div><div className="text-slate-500">{fmt$(+(t.salePrice||0))}</div></div><span className={clx("font-mono font-bold",gl>=0?"text-emerald-400":"text-red-400")}>{gl>=0?"+":""}{fmt$(gl)}</span></div>);})}</div>
+          {st.sales.length>0&&<div className="border-t border-slate-700 mt-2 pt-2 flex justify-between text-xs font-bold"><span className="text-slate-300">Total</span><span className="font-mono text-blue-400">{fmt$(st.rev)}</span></div>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs font-bold text-slate-400 uppercase mb-3">Bought ({st.purchases.length})</div>
+          {st.purchases.length===0&&<div className="text-slate-500 text-xs">No purchases this session</div>}
+          <div className="space-y-2">{st.purchases.map(t=>{const c=inventory.find(x=>x.id===(t.cardId||t.card_id));return(<div key={t.id} className="flex justify-between text-xs"><div className="min-w-0"><div className="text-slate-200 truncate">{c?`${c.player} ${c.year||""}`:t.player||"—"}</div></div><span className="font-mono text-slate-300">{fmt$(+(t.purchasePrice||t.purchase_price||0))}</span></div>);})}</div>
+          {st.purchases.length>0&&<div className="border-t border-slate-700 mt-2 pt-2 flex justify-between text-xs font-bold"><span className="text-slate-300">Total</span><span className="font-mono text-slate-200">{fmt$(st.spent)}</span></div>}
+        </Card>
+      </div>
+      {st.bestSale&&<Card className="p-4 border-emerald-500/30 bg-emerald-500/5"><div className="text-xs font-bold text-emerald-400 mb-1">🏆 Best Flip of the Day</div>{(()=>{const c=inventory.find(x=>x.id===(st.bestSale.cardId||st.bestSale.card_id));return <div><div className="text-slate-200 font-bold">{c?`${c.player} ${c.year||""}`:st.bestSale.player||"—"}</div><div className="text-sm text-emerald-400 font-mono">+{fmt$(+(st.bestSale.gl||0))}</div></div>;})()}</Card>}
+    </div>);
+  }
+
+  if(selectedShow){
+    const show=selectedShow;
+    const sessions=showSessions.filter(s=>s.showId===show.id).sort((a,b)=>a.date>b.date?1:-1);
+    const st=getShowStats(show);
+    return(<div className="space-y-5">
+      <button onClick={()=>setSelectedShow(null)} className="text-slate-400 hover:text-slate-200 text-sm cursor-pointer">← All Shows</button>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div><h1 className="text-2xl font-bold text-slate-100">{show.name}</h1><p className="text-sm text-slate-400">{show.location} · {show.startDate}{show.endDate!==show.startDate?` → ${show.endDate}`:""}</p></div>
+        <Badge color={sessions.some(s=>!s.closed)?"green":"gray"}>{sessions.some(s=>!s.closed)?"In Progress":`${sessions.length} day(s) complete`}</Badge>
+      </div>
+      {/* Show totals */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KPI label="Total Revenue" value={fmt$(st.rev,0)} color="blue" sub={`${st.cardsSold} sold`}/>
+        <KPI label="Total Spent" value={fmt$(st.spent,0)} color="white" sub={`${st.cardsBought} bought`}/>
+        <KPI label="Show Profit" value={fmt$(st.profit,0)} color={st.profit>=0?"green":"red"}/>
+        <KPI label="Win Rate" value={st.totalSales>0?`${Math.round(st.wins/st.totalSales*100)}%`:"—"} color={st.wins/st.totalSales>=0.6?"green":"amber"}/>
+      </div>
+      {/* Day by day */}
+      <div className="space-y-3">
+        <div className="text-sm font-bold text-slate-300">Day by Day</div>
+        {sessions.map(sess=>{
+          const ds=getSessionStats(sess);
+          return(<Card key={sess.id} className={clx("p-4 cursor-pointer hover:border-slate-500 transition-colors",!sess.closed&&"border-emerald-500/40")} onClick={()=>setSelectedSession(sess)}>
+            <div className="flex items-center justify-between mb-2">
+              <div><div className="font-bold text-slate-200">Day {sess.dayNum} — {sess.date}</div><div className="text-xs text-slate-400">{ds.cardsSold} sold · {ds.cardsBought} bought</div></div>
+              <div className="text-right"><div className={clx("font-mono font-bold",ds.profit>=0?"text-emerald-400":"text-red-400")}>{fmt$(ds.profit,0)}</div><div className="text-xs text-slate-500">profit</div></div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="text-center"><div className="text-slate-500">Revenue</div><div className="font-mono text-blue-400">{fmt$(ds.rev,0)}</div></div>
+              <div className="text-center"><div className="text-slate-500">Spent</div><div className="font-mono text-slate-300">{fmt$(ds.spent,0)}</div></div>
+              <div className="text-center"><div className="text-slate-500">Win Rate</div><div className={clx("font-mono",ds.sales.length>0&&ds.wins/ds.sales.length>=0.5?"text-emerald-400":"text-amber-400")}>{ds.sales.length>0?`${Math.round(ds.wins/ds.sales.length*100)}%`:"—"}</div></div>
+            </div>
+            {!sess.closed&&<div className="mt-2 text-xs text-emerald-400">● Active — go to Show Mode to record transactions</div>}
+          </Card>);
+        })}
+        {sessions.length===0&&<div className="text-slate-500 text-sm text-center py-6">No sessions yet — start one from Show Mode</div>}
+      </div>
+    </div>);
+  }
+
+  return(<div className="space-y-5">
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <h1 className="text-2xl font-bold text-slate-100">📍 Shows</h1>
+      <Btn size="sm" onClick={()=>{const name=prompt("Show name?");if(!name)return;const s={id:uid(),name,location:"",startDate:today(),endDate:today(),createdAt:today()};setShows(p=>[...p,s]);}}>+ New Show</Btn>
+    </div>
+    {shows.length===0&&<Card className="p-10 text-center"><div className="text-4xl mb-3">📍</div><div className="text-slate-300 font-bold text-lg mb-1">No shows yet</div><div className="text-sm text-slate-500 mb-4">Go to Show Mode and tap Session to create your first show</div></Card>}
+    <div className="space-y-3">{[...shows].reverse().map(show=>{
+      const sessions=showSessions.filter(s=>s.showId===show.id);
+      const st=shows.length>0?getShowStats(show):{rev:0,spent:0,profit:0,cardsSold:0,cardsBought:0};
+      const isActive=sessions.some(s=>!s.closed);
+      return(<Card key={show.id} className={clx("p-5 cursor-pointer hover:border-slate-500 transition-colors",isActive&&"border-emerald-500/40 bg-emerald-500/5")} onClick={()=>setSelectedShow(show)}>
+        <div className="flex items-start justify-between mb-3">
+          <div><div className="font-bold text-slate-100 text-lg">{show.name}</div><div className="text-sm text-slate-400">{show.location} · {show.startDate}{show.endDate!==show.startDate?` → ${show.endDate}`:""}</div></div>
+          <Badge color={isActive?"green":"gray"}>{isActive?"Active":`${sessions.length} day(s)`}</Badge>
+        </div>
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div><div className="text-xs text-slate-500">Revenue</div><div className="font-mono font-bold text-blue-400">{fmt$(st.rev,0)}</div></div>
+          <div><div className="text-xs text-slate-500">Profit</div><div className={clx("font-mono font-bold",st.profit>=0?"text-emerald-400":"text-red-400")}>{fmt$(st.profit,0)}</div></div>
+          <div><div className="text-xs text-slate-500">Cards Sold</div><div className="font-mono font-bold text-slate-200">{st.cardsSold}</div></div>
+        </div>
+      </Card>);
+    })}</div>
   </div>);
 }
