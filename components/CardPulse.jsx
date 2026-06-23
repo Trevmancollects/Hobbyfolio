@@ -1797,6 +1797,7 @@ function CardPulseApp({authUser}){
   if(!loaded)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-3"><div className="text-4xl animate-pulse">🃏</div><div className="text-slate-300 font-medium">Loading CardPulse...</div></div></div>;
   if(isMobile)return <MobileLayout inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots} authUser={authUser} shows={shows} setShows={setShows} showSessions={showSessions} setShowSessions={setShowSessions}/>;
   return(<div className="min-h-screen bg-slate-900 text-slate-200" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <AIAssistant inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots}/>
     <style>{`*{box-sizing:border-box;} ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:#0F172A;} ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;} .holo-shimmer{background:linear-gradient(135deg,#3B82F6 0%,#8B5CF6 25%,#EC4899 50%,#F59E0B 75%,#10B981 100%);background-size:200% 200%;animation:holo 4s ease infinite;} @keyframes holo{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
     <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 sticky top-0 z-40 gap-2">
       <div className="flex items-center gap-2 flex-shrink-0"><div className="holo-shimmer w-7 h-7 rounded-lg p-0.5"><div className="bg-slate-800 rounded-md w-full h-full flex items-center justify-center text-sm">🃏</div></div><span className="font-bold text-slate-100">CardPulse</span></div>
@@ -2179,6 +2180,7 @@ function MobileLayout({inventory,setInventory,transactions,setTransactions,expen
 
   return(
     <div className="min-h-screen bg-slate-900 text-slate-200 flex flex-col" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <AIAssistant inventory={inventory} transactions={transactions} expenses={expenses} snapshots={[]} mobile/>
       <style>{`
         *{box-sizing:border-box;}
         ::-webkit-scrollbar{display:none;}
@@ -2732,4 +2734,136 @@ function ShowsTab({inventory,transactions,showSessions,setShowSessions,shows,set
       </Card>);
     })}</div>
   </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI ASSISTANT — floating chat button, works on desktop + mobile
+// ═══════════════════════════════════════════════════════════════════════════════
+function AIAssistant({inventory,transactions,expenses,snapshots,mobile=false}){
+  const[open,setOpen]=useState(false);
+  const[messages,setMessages]=useState([{role:"assistant",content:"Hey! I'm your CardPulse AI. Ask me anything about your business — portfolio performance, which cards to sell, P&L analysis, show strategy, anything. What's on your mind?"}]);
+  const[input,setInput]=useState("");
+  const[loading,setLoading]=useState(false);
+  const endRef=useRef(null);
+  const inputRef=useRef(null);
+
+  useEffect(()=>{if(open){setTimeout(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});inputRef.current?.focus();},100);}},open);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
+
+  // Build context from live data
+  const buildContext=()=>{
+    const normC=c=>({...c,buyPrice:+(c.buyPrice||c.buy_price||0),marketValue:+(c.marketValue||c.market_value||0)});
+    const normT=t=>({...t,salePrice:+(t.salePrice||t.sale_price||0),purchasePrice:+(t.purchasePrice||t.purchase_price||0),gl:+(t.gl||0),platformFeePct:+(t.platformFeePct||t.platform_fee_pct||0)});
+    const inv=inventory.map(normC);
+    const txs=transactions.map(normT);
+    const active=inv.filter(c=>isActive(c.status)&&c.status!=="PC");
+    const pc=inv.filter(c=>c.status==="PC");
+    const sales=txs.filter(t=>t.type==="sale");
+    const curYear=String(new Date().getFullYear());
+    const ytd=sales.filter(t=>yearOf(t.date)===curYear);
+    const rev=ytd.reduce((s,t)=>s+t.salePrice,0);
+    const cogs=ytd.reduce((s,t)=>{const c=inv.find(x=>x.id===t.cardId);return s+(c?c.buyPrice:0);},0);
+    const gross=rev-cogs;
+    const fees=ytd.reduce((s,t)=>s+(t.salePrice*(t.platformFeePct/100)),0);
+    const opex=(expenses||[]).filter(e=>yearOf(e.date)===curYear).reduce((s,e)=>s+(+(e.amount||0)),0);
+    const net=gross-fees-opex;
+    const invValue=active.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
+    const invCost=active.reduce((s,c)=>s+c.buyPrice,0);
+    const pcValue=pc.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
+    const wins=ytd.filter(t=>t.gl>0).length;
+    const topCards=[...active].sort((a,b)=>(b.marketValue||b.buyPrice)-(a.marketValue||a.buyPrice)).slice(0,5);
+    const underwater=active.filter(c=>(c.marketValue||c.buyPrice)<c.buyPrice);
+    const aging=active.filter(c=>c.status==="For Sale"&&(c.buyDate||c.buy_date)&&daysBetween(c.buyDate||c.buy_date,today())>90);
+    const recentSales=[...sales].sort((a,b)=>b.date>a.date?1:-1).slice(0,5);
+
+    return{
+      portfolio:`Total portfolio value: ${fmt$(invValue)} | Cost basis: ${fmt$(invCost)} | Unrealized G/L: ${fmt$(invValue-invCost)} | Active cards: ${active.length} | PC value: ${fmt$(pcValue)} (${pc.length} cards)`,
+      pnl:`${curYear} YTD — Revenue: ${fmt$(rev)} | COGS: ${fmt$(cogs)} | Gross Profit: ${fmt$(gross)} | Fees: ${fmt$(fees)} | OpEx: ${fmt$(opex)} | Net Profit: ${fmt$(net)} | Win Rate: ${ytd.length?Math.round(wins/ytd.length*100):0}% (${wins}/${ytd.length} sales)`,
+      inventory:`Top holdings: ${topCards.map(c=>`${c.player} ${c.year} ${c.grade||"Raw"} @ ${fmt$(c.marketValue||c.buyPrice)}`).join(", ")} | Underwater cards: ${underwater.length} (${underwater.map(c=>c.player).join(", ")||"none"}) | Cards 90d+ unsold: ${aging.length} (${aging.map(c=>c.player).join(", ")||"none"})`,
+      recentTx:`Last 5 sales: ${recentSales.map(t=>{const c=inv.find(x=>x.id===t.cardId);return`${c?c.player:t.player||"?"} sold ${fmt$(t.salePrice)} (${t.gl>=0?"+":""}${fmt$(t.gl)} G/L) on ${t.date}`;}).join(" | ")||"none yet"}`,
+      shows:`Show sessions tracked: ${snapshots?.length||0}`
+    };
+  };
+
+  const send=async()=>{
+    if(!input.trim()||loading)return;
+    const userMsg={role:"user",content:input.trim()};
+    setMessages(p=>[...p,userMsg]);
+    setInput("");
+    setLoading(true);
+    try{
+      const context=buildContext();
+      const resp=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=="system"),context})});
+      const data=await resp.json();
+      if(!resp.ok)throw new Error(data.error||"Error");
+      setMessages(p=>[...p,{role:"assistant",content:data.text}]);
+    }catch(e){
+      setMessages(p=>[...p,{role:"assistant",content:`Sorry, I ran into an error: ${e.message}. Try again in a moment.`}]);
+    }finally{setLoading(false);}
+  };
+
+  const SUGGESTIONS=["How is my business doing?","Which cards should I sell first?","What's my most profitable player?","How did I do this month?","Which cards are losing money?","What's my win rate?"];
+
+  return(<>
+    {/* Floating button */}
+    <button onClick={()=>setOpen(v=>!v)} className={clx(
+      "fixed z-50 flex items-center gap-2 shadow-2xl cursor-pointer transition-all duration-200 font-medium",
+      mobile?"bottom-24 right-4 px-3 py-2.5 rounded-full text-sm bg-blue-600 hover:bg-blue-500 text-white":"bottom-6 right-6 px-4 py-3 rounded-full text-sm bg-blue-600 hover:bg-blue-500 text-white",
+      open&&"opacity-0 pointer-events-none"
+    )}>
+      <span className="text-lg">🤖</span><span className={mobile?"hidden":"block"}>Ask CardPulse AI</span>
+    </button>
+
+    {/* Chat panel */}
+    {open&&<div className={clx(
+      "fixed z-50 bg-slate-800 border border-slate-700 shadow-2xl flex flex-col",
+      mobile?"inset-x-0 bottom-0 top-16 rounded-t-2xl":"bottom-6 right-6 w-96 h-[600px] rounded-2xl"
+    )}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-700 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-lg">🤖</div>
+          <div><div className="font-bold text-slate-100 text-sm">CardPulse AI</div><div className="text-xs text-emerald-400">● Live — knows your data</div></div>
+        </div>
+        <button onClick={()=>setOpen(false)} className="text-slate-400 hover:text-slate-200 text-xl cursor-pointer w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700">×</button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((m,i)=>(
+          <div key={i} className={clx("flex gap-2",m.role==="user"?"justify-end":"justify-start")}>
+            {m.role==="assistant"&&<div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-sm flex-shrink-0 mt-0.5">🤖</div>}
+            <div className={clx("max-w-xs rounded-2xl px-4 py-3 text-sm leading-relaxed",
+              m.role==="user"?"bg-blue-600 text-white rounded-tr-sm":"bg-slate-700 text-slate-200 rounded-tl-sm")}>
+              {m.content.split('\n').map((line,j)=><p key={j} className={j>0?"mt-1":""}>{line}</p>)}
+            </div>
+            {m.role==="user"&&<div className="w-7 h-7 rounded-full bg-slate-600 flex items-center justify-center text-sm flex-shrink-0 mt-0.5">👤</div>}
+          </div>
+        ))}
+        {loading&&<div className="flex gap-2 justify-start">
+          <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-sm flex-shrink-0">🤖</div>
+          <div className="bg-slate-700 rounded-2xl rounded-tl-sm px-4 py-3"><div className="flex gap-1 items-center h-5">{[0,1,2].map(i=><div key={i} className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" style={{animationDelay:`${i*0.15}s`}}/>)}</div></div>
+        </div>}
+        <div ref={endRef}/>
+      </div>
+
+      {/* Quick suggestions — show only at start */}
+      {messages.length<=1&&<div className="px-4 pb-2 flex flex-wrap gap-2 flex-shrink-0">
+        {SUGGESTIONS.map(s=>(
+          <button key={s} onClick={()=>{setInput(s);setTimeout(()=>send(),50);}} className="text-xs px-3 py-1.5 rounded-full border border-slate-600 text-slate-300 hover:bg-slate-700 cursor-pointer transition-colors">{s}</button>
+        ))}
+      </div>}
+
+      {/* Input */}
+      <div className="p-4 border-t border-slate-700 flex-shrink-0">
+        <div className="flex gap-2">
+          <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Ask about your business..." className="flex-1 bg-slate-900 border border-slate-600 text-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500" disabled={loading}/>
+          <button onClick={send} disabled={!input.trim()||loading} className="w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 flex items-center justify-center cursor-pointer transition-colors flex-shrink-0">
+            <span className="text-white text-lg">↑</span>
+          </button>
+        </div>
+        <div className="text-xs text-slate-600 mt-2 text-center">Powered by Claude · Reads your live business data</div>
+      </div>
+    </div>}
+  </>);
 }
