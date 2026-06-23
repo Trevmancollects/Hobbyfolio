@@ -105,6 +105,12 @@ const yearOf=d=>{const n=normalizeDate(d);return n?n.slice(0,4):""};
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOOKS
 // ═══════════════════════════════════════════════════════════════════════════════
+function useMobile(){
+  const[mob,setMob]=useState(false);
+  useEffect(()=>{const check=()=>setMob(window.innerWidth<768);check();window.addEventListener("resize",check);return()=>window.removeEventListener("resize",check);},[]);
+  return mob;
+}
+
 function usePersist(key,init){
   const[val,setVal]=useState(init);const[loaded,setLoaded]=useState(false);
   useEffect(()=>{store.get(key).then(v=>{if(v!=null)setVal(v);setLoaded(true);});},[key]);
@@ -1778,6 +1784,7 @@ export default function CardPulse(){
 }
 
 function CardPulseApp({authUser}){
+  const isMobile=useMobile();
   const[tab,setTab]=useState("dashboard");const[sidebarOpen,setSidebarOpen]=useState(false);
   const[inventory,setInventory,invL]=usePersist("cv_inventory",[]);
   const[transactions,setTransactions,txL]=usePersist("cv_transactions",[]);
@@ -1786,6 +1793,7 @@ function CardPulseApp({authUser}){
   const[journal,setJournal,jL]=usePersist("cv_journal",[]);
   const loaded=invL&&txL&&expL&&snapL&&jL;
   if(!loaded)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-3"><div className="text-4xl animate-pulse">🃏</div><div className="text-slate-300 font-medium">Loading CardPulse...</div></div></div>;
+  if(isMobile)return <MobileLayout inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots} authUser={authUser}/>;
   return(<div className="min-h-screen bg-slate-900 text-slate-200" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
     <style>{`*{box-sizing:border-box;} ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:#0F172A;} ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;} .holo-shimmer{background:linear-gradient(135deg,#3B82F6 0%,#8B5CF6 25%,#EC4899 50%,#F59E0B 75%,#10B981 100%);background-size:200% 200%;animation:holo 4s ease infinite;} @keyframes holo{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
     <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 sticky top-0 z-40 gap-2">
@@ -2141,5 +2149,341 @@ function TradeWizard({inventory,setInventory,transactions,setTransactions,initia
         <Btn variant="success" onClick={confirmTrade}>Confirm Trade</Btn>
       </div>
     </div>}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MOBILE LAYOUT
+// ═══════════════════════════════════════════════════════════════════════════════
+function MobileLayout({inventory,setInventory,transactions,setTransactions,expenses,snapshots,setSnapshots,authUser}){
+  const[tab,setTab]=useState("show");
+
+  const TABS=[
+    {id:"home",icon:"🏠",label:"Home"},
+    {id:"cards",icon:"🃏",label:"Cards"},
+    {id:"show",icon:"🏪",label:"Show"},
+    {id:"reports",icon:"📊",label:"Reports"},
+    {id:"more",icon:"☰",label:"More"},
+  ];
+
+  return(
+    <div className="min-h-screen bg-slate-900 text-slate-200 flex flex-col" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <style>{`
+        *{box-sizing:border-box;}
+        ::-webkit-scrollbar{display:none;}
+        .mobile-safe-bottom{padding-bottom:max(16px,env(safe-area-inset-bottom));}
+        .mobile-safe-top{padding-top:max(16px,env(safe-area-inset-top));}
+      `}</style>
+
+      {/* Top bar */}
+      <div className="mobile-safe-top bg-slate-900 border-b border-slate-800 px-4 pb-3 flex items-center justify-between sticky top-0 z-30">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-sm">🃏</div>
+          <span className="font-bold text-slate-100">CardPulse</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-slate-400">{inventory.filter(c=>isActive(c.status)).length} cards</div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-y-auto pb-24">
+        {tab==="home"&&<MobileHome inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots}/>}
+        {tab==="cards"&&<MobileCards inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/>}
+        {tab==="show"&&<div className="px-4 py-4"><ShowModeTab inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions}/></div>}
+        {tab==="reports"&&<MobileReports inventory={inventory} transactions={transactions} expenses={expenses} snapshots={snapshots} setSnapshots={setSnapshots}/>}
+        {tab==="more"&&<MobileMore authUser={authUser}/>}
+      </div>
+
+      {/* Bottom tab bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 z-40 mobile-safe-bottom">
+        <div className="flex items-center justify-around px-2 pt-2">
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className={clx("flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl cursor-pointer transition-all flex-1",
+                t.id==="show"?"mx-1":"",
+                tab===t.id?"text-blue-400":"text-slate-500 hover:text-slate-300")}>
+              <span className={clx("text-xl leading-none",t.id==="show"&&"text-2xl")}>{t.icon}</span>
+              <span className={clx("text-xs font-medium",t.id==="show"&&"font-bold")}>{t.label}</span>
+              {tab===t.id&&<div className="w-1 h-1 rounded-full bg-blue-400 mt-0.5"/>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MOBILE HOME ──────────────────────────────────────────────────────────────
+function MobileHome({inventory,transactions,expenses,snapshots}){
+  const normT=t=>({...t,cardId:t.cardId||t.card_id,salePrice:+(t.salePrice||t.sale_price||0),purchasePrice:+(t.purchasePrice||t.purchase_price||0),gl:+(t.gl||0)});
+  const allTx=transactions.map(normT);
+  const sales=allTx.filter(t=>t.type==="sale");
+  const active=inventory.filter(c=>isActive(c.status));
+  const business=active.filter(c=>c.status!=="PC");
+  const pcCards=inventory.filter(c=>c.status==="PC");
+  const curYear=String(new Date().getFullYear());
+  const ytd=sales.filter(t=>yearOf(t.date)===curYear);
+  const rev=ytd.reduce((s,t)=>s+t.salePrice,0);
+  const cogs=ytd.reduce((s,t)=>{const c=inventory.find(x=>x.id===t.cardId);return s+(c?+(c.buyPrice||c.buy_price||0):0);},0);
+  const gross=rev-cogs;
+  const fees=ytd.reduce((s,t)=>s+(t.salePrice*((+(t.platformFeePct||t.platform_fee_pct||0))/100)),0);
+  const opex=(expenses||[]).filter(e=>yearOf(e.date)===curYear).reduce((s,e)=>s+(+(e.amount||0)),0);
+  const net=gross-fees-opex;
+  const invValue=business.reduce((s,c)=>s+(+(c.marketValue||c.market_value||c.buyPrice||c.buy_price||0)),0);
+  const pcValue=pcCards.reduce((s,c)=>s+(+(c.marketValue||c.market_value||c.buyPrice||c.buy_price||0)),0);
+  const aging90=business.filter(c=>c.status==="For Sale"&&(c.buyDate||c.buy_date)&&daysBetween(c.buyDate||c.buy_date,today())>90);
+  const underwater=business.filter(c=>(+(c.marketValue||c.market_value||c.buyPrice||c.buy_price||0))<(+(c.buyPrice||c.buy_price||0)));
+  const recent=[...allTx].sort((a,b)=>(b.date||"")>(a.date||"")?1:-1).slice(0,5);
+
+  return(<div className="px-4 py-4 space-y-4">
+    {/* KPIs 2x2 */}
+    <div className="grid grid-cols-2 gap-3">
+      <Card className="p-4"><div className="text-xs text-slate-400 mb-1">Revenue {curYear}</div><div className="text-xl font-bold font-mono text-blue-400">{fmt$(rev,0)}</div><div className="text-xs text-slate-500">{ytd.length} sales</div></Card>
+      <Card className="p-4"><div className="text-xs text-slate-400 mb-1">Net Profit</div><div className={clx("text-xl font-bold font-mono",net>=0?"text-emerald-400":"text-red-400")}>{fmt$(net,0)}</div><div className="text-xs text-slate-500">after fees</div></Card>
+      <Card className="p-4"><div className="text-xs text-slate-400 mb-1">Portfolio</div><div className="text-xl font-bold font-mono text-blue-400">{fmt$(invValue,0)}</div><div className="text-xs text-slate-500">{business.length} cards</div></Card>
+      <Card className="p-4"><div className="text-xs text-slate-400 mb-1">PC Value</div><div className="text-xl font-bold font-mono text-blue-400">{fmt$(pcValue,0)}</div><div className="text-xs text-slate-500">{pcCards.length} cards</div></Card>
+    </div>
+
+    {/* Alerts */}
+    {(aging90.length>0||underwater.length>0)&&<div className="space-y-2">
+      {aging90.length>0&&<div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs"><span className="text-amber-400 font-bold">⏰ {aging90.length} cards 90d+ unsold</span><div className="text-slate-400 mt-0.5 truncate">{aging90.slice(0,2).map(c=>c.player).join(", ")}</div></div>}
+      {underwater.length>0&&<div className="p-3 rounded-xl border border-red-500/40 bg-red-500/10 text-xs"><span className="text-red-400 font-bold">📉 {underwater.length} cards underwater</span><div className="text-slate-400 mt-0.5 truncate">{underwater.slice(0,2).map(c=>c.player).join(", ")}</div></div>}
+    </div>}
+
+    {/* Top holdings */}
+    <Card className="p-4">
+      <div className="text-xs font-bold text-slate-400 uppercase mb-3">Top Holdings</div>
+      <div className="space-y-3">
+        {[...business].sort((a,b)=>(+(b.marketValue||b.buy_price||0))-(+(a.marketValue||a.buy_price||0))).slice(0,5).map(c=>{
+          const mv=+(c.marketValue||c.market_value||c.buyPrice||c.buy_price||0);
+          const cost=+(c.buyPrice||c.buy_price||0);
+          const gl=mv-cost;
+          return(<div key={c.id} className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm text-slate-200 font-medium truncate">{c.player}</div>
+              <div className="text-xs text-slate-500">{c.year} · {c.grade||"Raw"}</div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <div className="font-mono text-sm text-blue-400">{fmt$(mv)}</div>
+              <div className={clx("font-mono text-xs",gl>=0?"text-emerald-400":"text-red-400")}>{gl>=0?"+":""}{fmt$(gl,0)}</div>
+            </div>
+          </div>);
+        })}
+      </div>
+    </Card>
+
+    {/* Recent activity */}
+    <Card className="p-4">
+      <div className="text-xs font-bold text-slate-400 uppercase mb-3">Recent Activity</div>
+      {recent.length===0&&<div className="text-slate-500 text-xs text-center py-3">No transactions yet</div>}
+      <div className="space-y-2">{recent.map(t=>{
+        const card=inventory.find(c=>c.id===t.cardId);
+        const desc=card?`${card.player} ${card.year||""}`:t.player||"Transaction";
+        const amt=t.type==="sale"?t.salePrice:t.type==="purchase"?t.purchasePrice:0;
+        return(<div key={t.id} className="flex items-center gap-2">
+          <div className={clx("w-2 h-2 rounded-full flex-shrink-0",t.type==="sale"?"bg-emerald-500":t.type==="purchase"?"bg-blue-500":"bg-amber-500")}/>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-slate-200 truncate">{desc}</div>
+            <div className="text-xs text-slate-500">{t.date} · {t.type}</div>
+          </div>
+          <div className="font-mono text-xs text-slate-300 flex-shrink-0">{fmt$(amt)}</div>
+        </div>);
+      })}</div>
+    </Card>
+  </div>);
+}
+
+// ─── MOBILE CARDS ─────────────────────────────────────────────────────────────
+function MobileCards({inventory,setInventory,transactions,setTransactions}){
+  const[search,setSearch]=useState("");
+  const[sellCard,setSellCard]=useState(null);
+  const[tradeCard,setTradeCard]=useState(null);
+  const active=inventory.filter(c=>isActive(c.status)&&c.status!=="PC");
+  const filtered=search?active.filter(c=>[c.player,c.year,c.set,c.grade,c.certNum||c.cert_num].join(" ").toLowerCase().includes(search.toLowerCase())):active;
+
+  const handleSell=(card,sale)=>{
+    setInventory(p=>p.map(c=>c.id===card.id?{...c,status:"Sold",soldDate:sale.date,soldPrice:sale.salePrice}:c));
+    const fee=sale.salePrice*(sale.platformFeePct/100);
+    const net=sale.salePrice-fee-(sale.shippingOut||0);
+    const gl=net-(+(card.buyPrice||card.buy_price||0));
+    setTransactions(p=>[...p,{id:uid(),type:"sale",cardId:card.id,player:card.player,date:sale.date,platform:sale.platform,salePrice:sale.salePrice,platformFeePct:sale.platformFeePct,shippingOut:sale.shippingOut||0,shippingIn:0,notes:sale.notes||"",netProceeds:net,gl,purchasePrice:0,gradingFee:0,tradeValueOut:0,tradeValueIn:0}]);
+    setSellCard(null);
+  };
+
+  if(sellCard)return(
+    <div className="px-4 py-4 space-y-4">
+      <button onClick={()=>setSellCard(null)} className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">← Back to Cards</button>
+      <div className="p-3 bg-slate-800 rounded-xl border border-slate-700">
+        <div className="font-bold text-slate-100">{sellCard.player} {sellCard.year}</div>
+        <div className="text-xs text-slate-400">{sellCard.grade||"Raw"} · Cost: {fmt$(sellCard.buyPrice||sellCard.buy_price)} · Cert: {sellCard.certNum||sellCard.cert_num||"—"}</div>
+      </div>
+      <SellCardModal card={{...sellCard,buyPrice:+(sellCard.buyPrice||sellCard.buy_price||0)}} onSave={sale=>handleSell(sellCard,sale)} onClose={()=>setSellCard(null)}/>
+    </div>
+  );
+
+  if(tradeCard)return(
+    <div className="px-4 py-4 space-y-4">
+      <button onClick={()=>setTradeCard(null)} className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">← Back to Cards</button>
+      <TradeWizard inventory={inventory} setInventory={setInventory} transactions={transactions} setTransactions={setTransactions} initialCard={tradeCard} onClose={()=>setTradeCard(null)}/>
+    </div>
+  );
+
+  return(<div className="px-4 py-4 space-y-3">
+    {/* Search */}
+    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search player, grade, cert#..." className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-4 py-3 text-sm w-full focus:outline-none focus:border-blue-500"/>
+    <div className="text-xs text-slate-500">{filtered.length} active cards</div>
+
+    {/* Card list */}
+    {filtered.length===0&&<div className="text-center py-12 text-slate-500"><div className="text-4xl mb-2">🃏</div><div>No active cards</div></div>}
+    <div className="space-y-3">
+      {filtered.map(card=>{
+        const mv=+(card.marketValue||card.market_value||card.buyPrice||card.buy_price||0);
+        const cost=+(card.buyPrice||card.buy_price||0);
+        const gl=mv-cost;
+        const cert=card.certNum||card.cert_num;
+        return(<Card key={card.id} className="p-4">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0 flex-1">
+              <div className="font-bold text-slate-100 text-base leading-tight">{card.player}</div>
+              <div className="text-xs text-slate-400 mt-0.5">{card.year} {card.set||card.set_name||""}</div>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {card.grade?<Badge color="purple">{card.grade}</Badge>:cert?<Badge color="gray">Graded</Badge>:<span className="text-xs text-slate-500">Raw</span>}
+                {cert&&<span className="text-xs font-mono text-slate-500">#{cert}</span>}
+                <StatusBadge status={card.status}/>
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <div className="text-xs text-slate-500">Cost</div>
+              <div className="font-mono font-bold text-slate-200">{fmt$(cost)}</div>
+              <div className="text-xs text-slate-500 mt-1">Market</div>
+              <div className="font-mono font-bold text-blue-400">{fmt$(mv)}</div>
+              <div className={clx("font-mono text-xs font-semibold mt-0.5",gl>=0?"text-emerald-400":"text-red-400")}>{gl>=0?"+":""}{fmt$(gl,0)}</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={()=>setSellCard(card)} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold cursor-pointer transition-colors">💰 Sell</button>
+            <button onClick={()=>setTradeCard(card)} className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold cursor-pointer transition-colors">🔄 Trade</button>
+          </div>
+        </Card>);
+      })}
+    </div>
+  </div>);
+}
+
+// ─── MOBILE REPORTS ───────────────────────────────────────────────────────────
+function MobileReports({inventory,transactions,expenses,snapshots,setSnapshots}){
+  const[view,setView]=useState("pnl");
+  const normT=t=>({...t,cardId:t.cardId||t.card_id,salePrice:+(t.salePrice||t.sale_price||0),platformFeePct:+(t.platformFeePct||t.platform_fee_pct||0),gl:+(t.gl||0)});
+  const allTx=transactions.map(normT);
+  const sales=allTx.filter(t=>t.type==="sale");
+  const curYear=String(new Date().getFullYear());
+  const ytd=sales.filter(t=>yearOf(t.date)===curYear);
+  const rev=ytd.reduce((s,t)=>s+t.salePrice,0);
+  const cogs=ytd.reduce((s,t)=>{const c=inventory.find(x=>x.id===t.cardId);return s+(c?+(c.buyPrice||c.buy_price||0):0);},0);
+  const gross=rev-cogs;
+  const fees=ytd.reduce((s,t)=>s+(t.salePrice*(t.platformFeePct/100)),0);
+  const opex=(expenses||[]).filter(e=>yearOf(e.date)===curYear).reduce((s,e)=>s+(+(e.amount||0)),0);
+  const net=gross-fees-opex;
+  const winRate=ytd.length?Math.round(ytd.filter(t=>t.gl>0).length/ytd.length*100):0;
+  const activeInv=inventory.filter(c=>isActive(c.status)&&c.status!=="PC");
+  const invValue=activeInv.reduce((s,c)=>s+(+(c.marketValue||c.market_value||c.buyPrice||c.buy_price||0)),0);
+  const invCost=activeInv.reduce((s,c)=>s+(+(c.buyPrice||c.buy_price||0)),0);
+
+  // Portfolio data
+  const normC=c=>({...c,buyPrice:+(c.buyPrice||c.buy_price||0),marketValue:+(c.marketValue||c.market_value||0),sport:c.sport||detectSport(c)});
+  const cards=activeInv.map(normC);
+  const totalValue=cards.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
+  const totalCost=cards.reduce((s,c)=>s+c.buyPrice,0);
+  const sportMap={};
+  cards.forEach(c=>{const sp=c.sport;if(!sportMap[sp])sportMap[sp]={sport:sp,count:0,value:0};sportMap[sp].count++;sportMap[sp].value+=(c.marketValue||c.buyPrice);});
+  const sports=Object.values(sportMap).sort((a,b)=>b.value-a.value);
+
+  return(<div className="px-4 py-4 space-y-4">
+    {/* Toggle */}
+    <div className="flex bg-slate-800 rounded-xl p-1 gap-1">
+      <button onClick={()=>setView("pnl")} className={clx("flex-1 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all",view==="pnl"?"bg-blue-600 text-white":"text-slate-400")}>P&L</button>
+      <button onClick={()=>setView("portfolio")} className={clx("flex-1 py-2 rounded-lg text-sm font-medium cursor-pointer transition-all",view==="portfolio"?"bg-blue-600 text-white":"text-slate-400")}>Portfolio</button>
+    </div>
+
+    {view==="pnl"&&<div className="space-y-3">
+      {/* Income Statement */}
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-400 uppercase mb-3">Income Statement {curYear}</div>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between"><span className="text-slate-400">Revenue</span><span className="font-mono text-blue-400">{fmt$(rev)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">COGS</span><span className="font-mono text-slate-400">({fmt$(cogs)})</span></div>
+          <div className="flex justify-between pt-2 border-t border-slate-700 font-semibold"><span className="text-slate-200">Gross Profit</span><span className={clx("font-mono",gross>=0?"text-emerald-400":"text-red-400")}>{fmt$(gross)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Fees</span><span className="font-mono text-slate-400">({fmt$(fees)})</span></div>
+          {opex>0&&<div className="flex justify-between"><span className="text-slate-400">Expenses</span><span className="font-mono text-slate-400">({fmt$(opex)})</span></div>}
+          <div className="flex justify-between pt-2 border-t border-slate-700 font-bold text-base"><span className="text-slate-100">Net Profit</span><span className={clx("font-mono",net>=0?"text-emerald-400":"text-red-400")}>{fmt$(net)}</span></div>
+        </div>
+      </Card>
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Win Rate</div><div className={clx("text-2xl font-bold",winRate>=60?"text-emerald-400":winRate>=40?"text-amber-400":"text-red-400")}>{winRate}%</div></Card>
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Cards Sold</div><div className="text-2xl font-bold text-slate-200">{ytd.length}</div></Card>
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Avg Sale</div><div className="text-lg font-bold font-mono text-blue-400">{fmt$(ytd.length?rev/ytd.length:0,0)}</div></Card>
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Unrealized G/L</div><div className={clx("text-lg font-bold font-mono",(invValue-invCost)>=0?"text-emerald-400":"text-red-400")}>{fmt$(invValue-invCost,0)}</div></Card>
+      </div>
+      {/* Top sales */}
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-400 uppercase mb-3">Top Sales</div>
+        {[...ytd].sort((a,b)=>b.gl-a.gl).slice(0,5).map((t,i)=>{
+          const c=inventory.find(x=>x.id===t.cardId);
+          return(<div key={t.id} className="flex items-center gap-2 py-2 border-b border-slate-700/50 last:border-0">
+            <span className="text-slate-600 text-xs w-4">{i+1}</span>
+            <div className="flex-1 min-w-0"><div className="text-sm text-slate-200 truncate">{c?`${c.player} ${c.year||""}`:t.player||"—"}</div><div className="text-xs text-slate-500">{t.date} · {t.platform}</div></div>
+            <div className="text-right flex-shrink-0"><div className="font-mono text-xs text-blue-400">{fmt$(t.salePrice)}</div><div className={clx("font-mono text-xs font-bold",t.gl>=0?"text-emerald-400":"text-red-400")}>{t.gl>=0?"+":""}{fmt$(t.gl)}</div></div>
+          </div>);
+        })}
+        {ytd.length===0&&<div className="text-slate-500 text-xs text-center py-3">No sales yet this year</div>}
+      </Card>
+    </div>}
+
+    {view==="portfolio"&&<div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Total Value</div><div className="text-lg font-bold font-mono text-blue-400">{fmt$(totalValue,0)}</div></Card>
+        <Card className="p-3 text-center"><div className="text-xs text-slate-500">Total Cost</div><div className="text-lg font-bold font-mono text-slate-200">{fmt$(totalCost,0)}</div></Card>
+        <Card className="p-3 text-center col-span-2"><div className="text-xs text-slate-500">Appreciation</div><div className={clx("text-2xl font-bold font-mono",(totalValue-totalCost)>=0?"text-emerald-400":"text-red-400")}>{(totalValue-totalCost)>=0?"+":""}{fmt$(totalValue-totalCost,0)}</div><div className="text-xs text-slate-500">{totalCost>0?`${((totalValue-totalCost)/totalCost*100).toFixed(1)}% ROI`:""}</div></Card>
+      </div>
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-400 uppercase mb-3">By Sport</div>
+        {sports.map(s=>{const pct=totalValue>0?(s.value/totalValue*100):0;return(<div key={s.sport} className="mb-3">
+          <div className="flex justify-between text-sm mb-1"><span className="text-slate-200 font-medium">{s.sport}</span><div className="flex gap-3"><span className="text-slate-400 text-xs">{s.count} cards</span><span className="font-mono text-blue-400">{fmt$(s.value,0)}</span></div></div>
+          <div className="w-full bg-slate-700 rounded-full h-2"><div className="h-2 rounded-full" style={{width:`${pct}%`,background:SPORT_COLORS[s.sport]||"#64748B"}}/></div>
+        </div>);})}
+      </Card>
+      <Card className="p-4">
+        <div className="text-xs font-bold text-slate-400 uppercase mb-3">Top Holdings</div>
+        {[...cards].sort((a,b)=>(b.marketValue||b.buyPrice)-(a.marketValue||a.buyPrice)).slice(0,8).map(c=>{
+          const gl=(c.marketValue||c.buyPrice)-c.buyPrice;
+          return(<div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-700/40 last:border-0">
+            <div className="min-w-0 flex-1"><div className="text-sm text-slate-200 truncate">{c.player} {c.year}</div><div className="text-xs text-slate-500">{c.grade||"Raw"} {c.certNum?`· #${c.certNum}`:""}</div></div>
+            <div className="text-right flex-shrink-0 ml-2"><div className="font-mono text-sm text-blue-400">{fmt$(c.marketValue||c.buyPrice)}</div><div className={clx("font-mono text-xs",gl>=0?"text-emerald-400":"text-red-400")}>{gl>=0?"+":""}{fmt$(gl,0)}</div></div>
+          </div>);
+        })}
+      </Card>
+    </div>}
+  </div>);
+}
+
+// ─── MOBILE MORE ──────────────────────────────────────────────────────────────
+function MobileMore({authUser}){
+  return(<div className="px-4 py-4 space-y-4">
+    <div className="text-xs text-slate-500 uppercase font-semibold">Account</div>
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-lg font-bold text-white">{(authUser?.email||"C")[0].toUpperCase()}</div>
+        <div><div className="text-sm font-medium text-slate-200">{authUser?.email}</div><div className="text-xs text-slate-500">CardPulse account</div></div>
+      </div>
+    </Card>
+    <div className="text-xs text-slate-500 uppercase font-semibold">Info</div>
+    <Card className="p-4 space-y-3 text-sm text-slate-400">
+      <div className="flex justify-between"><span>Version</span><span className="text-slate-300">1.0 Beta</span></div>
+      <div className="flex justify-between"><span>Platform</span><span className="text-slate-300">CardPulse</span></div>
+      <div className="flex justify-between"><span>Support</span><span className="text-blue-400">cardpulse.cards</span></div>
+    </Card>
+    <button onClick={async()=>{await supabase.auth.signOut();window.location.href="/";}} className="w-full py-3 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 text-sm font-medium cursor-pointer hover:bg-red-500/20 transition-colors">Sign Out</button>
   </div>);
 }
