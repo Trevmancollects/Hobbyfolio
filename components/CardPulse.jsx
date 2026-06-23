@@ -2752,37 +2752,42 @@ function AIAssistant({inventory,transactions,expenses,snapshots,mobile=false}){
 
   // Build context from live data
   const buildContext=()=>{
-    const normC=c=>({...c,buyPrice:+(c.buyPrice||c.buy_price||0),marketValue:+(c.marketValue||c.market_value||0)});
-    const normT=t=>({...t,salePrice:+(t.salePrice||t.sale_price||0),purchasePrice:+(t.purchasePrice||t.purchase_price||0),gl:+(t.gl||0),platformFeePct:+(t.platformFeePct||t.platform_fee_pct||0)});
-    const inv=inventory.map(normC);
-    const txs=transactions.map(normT);
-    const active=inv.filter(c=>isActive(c.status)&&c.status!=="PC");
-    const pc=inv.filter(c=>c.status==="PC");
-    const sales=txs.filter(t=>t.type==="sale");
-    const curYear=String(new Date().getFullYear());
-    const ytd=sales.filter(t=>yearOf(t.date)===curYear);
-    const rev=ytd.reduce((s,t)=>s+t.salePrice,0);
-    const cogs=ytd.reduce((s,t)=>{const c=inv.find(x=>x.id===t.cardId);return s+(c?c.buyPrice:0);},0);
-    const gross=rev-cogs;
-    const fees=ytd.reduce((s,t)=>s+(t.salePrice*(t.platformFeePct/100)),0);
-    const opex=(expenses||[]).filter(e=>yearOf(e.date)===curYear).reduce((s,e)=>s+(+(e.amount||0)),0);
-    const net=gross-fees-opex;
-    const invValue=active.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
-    const invCost=active.reduce((s,c)=>s+c.buyPrice,0);
-    const pcValue=pc.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
-    const wins=ytd.filter(t=>t.gl>0).length;
-    const topCards=[...active].sort((a,b)=>(b.marketValue||b.buyPrice)-(a.marketValue||a.buyPrice)).slice(0,5);
-    const underwater=active.filter(c=>(c.marketValue||c.buyPrice)<c.buyPrice);
-    const aging=active.filter(c=>c.status==="For Sale"&&(c.buyDate||c.buy_date)&&daysBetween(c.buyDate||c.buy_date,today())>90);
-    const recentSales=[...sales].sort((a,b)=>b.date>a.date?1:-1).slice(0,5);
-
-    return{
-      portfolio:`Total portfolio value: ${fmt$(invValue)} | Cost basis: ${fmt$(invCost)} | Unrealized G/L: ${fmt$(invValue-invCost)} | Active cards: ${active.length} | PC value: ${fmt$(pcValue)} (${pc.length} cards)`,
-      pnl:`${curYear} YTD — Revenue: ${fmt$(rev)} | COGS: ${fmt$(cogs)} | Gross Profit: ${fmt$(gross)} | Fees: ${fmt$(fees)} | OpEx: ${fmt$(opex)} | Net Profit: ${fmt$(net)} | Win Rate: ${ytd.length?Math.round(wins/ytd.length*100):0}% (${wins}/${ytd.length} sales)`,
-      inventory:`Top holdings: ${topCards.map(c=>`${c.player} ${c.year} ${c.grade||"Raw"} @ ${fmt$(c.marketValue||c.buyPrice)}`).join(", ")} | Underwater cards: ${underwater.length} (${underwater.map(c=>c.player).join(", ")||"none"}) | Cards 90d+ unsold: ${aging.length} (${aging.map(c=>c.player).join(", ")||"none"})`,
-      recentTx:`Last 5 sales: ${recentSales.map(t=>{const c=inv.find(x=>x.id===t.cardId);return`${c?c.player:t.player||"?"} sold ${fmt$(t.salePrice)} (${t.gl>=0?"+":""}${fmt$(t.gl)} G/L) on ${t.date}`;}).join(" | ")||"none yet"}`,
-      shows:`Show sessions tracked: ${snapshots?.length||0}`
-    };
+    try{
+      const safe=(v,fb=0)=>{const n=+(v||0);return isNaN(n)?fb:n;};
+      const safeStr=(v,fb="")=>v!=null?String(v):fb;
+      const normC=c=>({...c,id:c.id,player:safeStr(c.player),year:safeStr(c.year),grade:safeStr(c.grade),status:safeStr(c.status,"For Sale"),buyPrice:safe(c.buyPrice||c.buy_price),marketValue:safe(c.marketValue||c.market_value||c.buyPrice||c.buy_price),buyDate:safeStr(c.buyDate||c.buy_date),certNum:safeStr(c.certNum||c.cert_num)});
+      const normT=t=>({...t,id:t.id,type:safeStr(t.type),cardId:t.cardId||t.card_id,player:safeStr(t.player),date:safeStr(t.date),platform:safeStr(t.platform),salePrice:safe(t.salePrice||t.sale_price),purchasePrice:safe(t.purchasePrice||t.purchase_price),gl:safe(t.gl),platformFeePct:safe(t.platformFeePct||t.platform_fee_pct)});
+      const inv=(inventory||[]).map(normC);
+      const txs=(transactions||[]).map(normT);
+      const active=inv.filter(c=>isActive(c.status)&&c.status!=="PC");
+      const pc=inv.filter(c=>c.status==="PC");
+      const sales=txs.filter(t=>t.type==="sale");
+      const curYear=String(new Date().getFullYear());
+      const ytd=sales.filter(t=>{try{return yearOf(t.date)===curYear;}catch{return false;}});
+      const rev=ytd.reduce((s,t)=>s+t.salePrice,0);
+      const cogs=ytd.reduce((s,t)=>{const c=inv.find(x=>x.id===t.cardId);return s+(c?c.buyPrice:0);},0);
+      const gross=rev-cogs;
+      const fees=ytd.reduce((s,t)=>s+(t.salePrice*(t.platformFeePct/100)),0);
+      const opex=(expenses||[]).filter(e=>{try{return yearOf(e.date)===curYear;}catch{return false;}}).reduce((s,e)=>s+safe(e.amount),0);
+      const net=gross-fees-opex;
+      const invValue=active.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
+      const invCost=active.reduce((s,c)=>s+c.buyPrice,0);
+      const pcValue=pc.reduce((s,c)=>s+(c.marketValue||c.buyPrice),0);
+      const wins=ytd.filter(t=>t.gl>0).length;
+      const topCards=[...active].sort((a,b)=>(b.marketValue||b.buyPrice)-(a.marketValue||a.buyPrice)).slice(0,5);
+      const underwater=active.filter(c=>(c.marketValue||c.buyPrice)<c.buyPrice);
+      const aging=active.filter(c=>{try{return c.status==="For Sale"&&c.buyDate&&daysBetween(c.buyDate,today())>90;}catch{return false;}});
+      const recentSales=[...sales].sort((a,b)=>(b.date||"")>(a.date||"")?1:-1).slice(0,5);
+      return{
+        portfolio:`Total portfolio value: ${fmt$(invValue)} | Cost basis: ${fmt$(invCost)} | Unrealized G/L: ${fmt$(invValue-invCost)} | Active cards: ${active.length} | PC value: ${fmt$(pcValue)} (${pc.length} cards)`,
+        pnl:`${curYear} YTD — Revenue: ${fmt$(rev)} | COGS: ${fmt$(cogs)} | Gross Profit: ${fmt$(gross)} | Fees: ${fmt$(fees)} | OpEx: ${fmt$(opex)} | Net Profit: ${fmt$(net)} | Win Rate: ${ytd.length?Math.round(wins/ytd.length*100):0}% (${wins}/${ytd.length} sales)`,
+        inventory:`Top holdings: ${topCards.map(c=>`${c.player} ${c.year} ${c.grade||"Raw"} @ ${fmt$(c.marketValue||c.buyPrice)}`).join(", ")||"none"} | Underwater: ${underwater.length} (${underwater.map(c=>c.player).slice(0,3).join(", ")||"none"}) | 90d+ unsold: ${aging.length} (${aging.map(c=>c.player).slice(0,3).join(", ")||"none"})`,
+        recentTx:`Last 5 sales: ${recentSales.map(t=>{const c=inv.find(x=>x.id===t.cardId);return`${c?c.player:t.player||"?"} sold ${fmt$(t.salePrice)} (${t.gl>=0?"+":""}${fmt$(t.gl)} G/L) on ${t.date||"?"}`;}).join(" | ")||"none yet"}`,
+        shows:`Show sessions tracked: ${(snapshots||[]).length}`
+      };
+    }catch(err){
+      return{portfolio:"Data loading...",pnl:"Data loading...",inventory:"Data loading...",recentTx:"Data loading...",shows:"0"};
+    }
   };
 
   const send=async()=>{
@@ -2798,7 +2803,9 @@ function AIAssistant({inventory,transactions,expenses,snapshots,mobile=false}){
       if(!resp.ok)throw new Error(data.error||"Error");
       setMessages(p=>[...p,{role:"assistant",content:data.text}]);
     }catch(e){
-      setMessages(p=>[...p,{role:"assistant",content:`Sorry, I ran into an error: ${e.message}. Try again in a moment.`}]);
+      const msg=e?.message||"Unknown error";
+      console.error("AI chat error:",e);
+      setMessages(p=>[...p,{role:"assistant",content:`Sorry, something went wrong: ${msg}. ${msg.includes("API key")||msg.includes("503")?"Check that ANTHROPIC_API_KEY is set in Vercel.":"Please try again."}`}]);
     }finally{setLoading(false);}
   };
 
