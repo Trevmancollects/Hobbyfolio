@@ -37,7 +37,7 @@ const CL_MAP={
   "year":"year","set":"set","set name":"set",
   "card number":"cardNum","card #":"cardNum","#":"cardNum",
   "parallel":"parallel","variant":"parallel",
-  "grade":"grade",
+  "grade":"grade","graded":"grade","psa grade":"grade","bgs grade":"grade","sgc grade":"grade","card grade":"grade","grading":"grade","slab grade":"grade","certification grade":"grade",
   "certification":"certNum","cert":"certNum","cert #":"certNum","cert number":"certNum","cert no":"certNum",
   "certification number":"certNum","serial":"certNum","serial number":"certNum","slab #":"certNum",
   "psa #":"certNum","bgs #":"certNum","sgc #":"certNum",
@@ -172,8 +172,9 @@ function CardScanner({onResult,compact=false}){
   const PROMPT='Analyze this sports card or graded slab photo. Extract all visible info from the label or card front. Return ONLY valid JSON: {"player":"","year":"","set":"","cardNum":"","parallel":"","grade":"","certNum":"","condition":"Raw or Graded","notes":""}';
   const scan=async e=>{const file=e.target.files[0];if(!file)return;e.target.value="";setScanning(true);setResult(null);setMsg("");
     try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(ev.target.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});const mime=file.type||"image/jpeg";
-      const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:mime,data:b64}},{type:"text",text:PROMPT}]}]})});
-      const data=await resp.json();const text=data.content?.find(b=>b.type==="text")?.text||"";const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
+      const resp=await fetch("/api/scan-card",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:b64,mimeType:mime,prompt:PROMPT})});
+      if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||"Scan failed");}
+      const data=await resp.json();const text=data.text||"";const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
       parsed.photo=`data:${mime};base64,${b64}`;setResult("ok");setMsg(`Found: ${parsed.player||"Unknown"}${parsed.grade?" · "+parsed.grade:""}${parsed.certNum?" · Cert: "+parsed.certNum:""}`);onResult(parsed);
     }catch{setResult("err");setMsg("Could not read card. Try a clearer photo with good lighting.");}finally{setScanning(false);}};
   const box=clx("flex items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-all cursor-pointer",scanning?"border-blue-500/50 bg-blue-500/10":"border-slate-600 hover:border-blue-500/50 hover:bg-blue-500/5");
@@ -394,7 +395,7 @@ function InventoryTab({inventory,setInventory,setTransactions}){
           <td className="px-3 py-2"><input type="checkbox" checked={selected.has(card.id)} onChange={()=>toggleSel(card.id)} className="cursor-pointer"/></td>
           <td className="px-3 py-2"><div className="font-medium text-slate-200">{card.player}</div><div className="text-xs text-slate-500">{card.parallel}</div>{dh>=365&&<span className="text-xs text-emerald-500">LT</span>}</td>
           <td className="px-3 py-2 text-slate-400 text-xs">{card.year}<br/>{card.set}</td>
-          <td className="px-3 py-2 whitespace-nowrap">{card.grade?<Badge color="purple">{card.grade}</Badge>:<span className="text-xs text-slate-500">Raw</span>}</td>
+          <td className="px-3 py-2 whitespace-nowrap">{card.grade?<Badge color="purple">{card.grade}</Badge>:card.certNum?<Badge color="gray">Graded</Badge>:<span className="text-xs text-slate-500">Raw</span>}</td>
           <td className="px-3 py-2 font-mono text-xs text-slate-400 whitespace-nowrap">{card.certNum||"—"}</td>
           <td className="px-3 py-2 font-mono text-xs text-slate-400 whitespace-nowrap">{card.buyDate||"—"}</td>
           <td className="px-3 py-2"><StatusBadge status={card.status}/></td>
@@ -988,7 +989,11 @@ function ToolsTab({inventory,setInventory,transactions,setTransactions,expenses,
 
   // ── Build cards from wizard ──
   const buildCards=wiz=>{const{rows,mapping}=wiz;const getVal=(row,field)=>{const col=mapping[field];if(!col)return"";const idx=wiz.rawHeaders.indexOf(col);return idx>=0?(row[idx]||""):"";};
-    return rows.map(row=>{const player=getVal(row,"player");if(!player)return null;const grade=getVal(row,"grade");const certNum=getVal(row,"certNum").replace(/[^a-zA-Z0-9]/g,"");
+    return rows.map(row=>{const player=getVal(row,"player");if(!player)return null;const rawGrade=getVal(row,"grade");
+      // Try to detect grade from other columns if grade col is blank
+      const gradeFromSet=rawGrade||getVal(row,"parallel")||"";
+      const grade=rawGrade;
+      const certNum=getVal(row,"certNum").replace(/[^a-zA-Z0-9]/g,"");
       const buyPriceRaw=getVal(row,"buyPrice").replace(/[$,]/g,"");const mvRaw=getVal(row,"marketValue").replace(/[$,]/g,"");
       const soldRaw=getVal(row,"sold").toLowerCase();const salePriceRaw=getVal(row,"salePrice").replace(/[$,]/g,"");const saleDateRaw=getVal(row,"saleDate");
       const isSold=soldRaw==="true"||soldRaw==="yes"||soldRaw==="sold"||soldRaw==="1"||(+salePriceRaw>0)||(saleDateRaw!=="");
