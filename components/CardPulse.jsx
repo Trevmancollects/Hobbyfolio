@@ -173,8 +173,9 @@ function CardScanner({onResult,compact=false}){
   const scan=async e=>{const file=e.target.files[0];if(!file)return;e.target.value="";setScanning(true);setResult(null);setMsg("");
     try{const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=ev=>res(ev.target.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});const mime=file.type||"image/jpeg";
       const resp=await fetch("/api/scan-card",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image:b64,mimeType:mime,prompt:PROMPT})});
-      if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error||"Scan failed");}
-      const data=await resp.json();const text=data.text||"";const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
+      const respData=await resp.json().catch(()=>({}));
+      if(!resp.ok){throw new Error(respData.error||`HTTP ${resp.status}: Scan failed`);}
+      const text=respData.text||"";const parsed=JSON.parse(text.replace(/```json|```/g,"").trim());
       parsed.photo=`data:${mime};base64,${b64}`;setResult("ok");setMsg(`Found: ${parsed.player||"Unknown"}${parsed.grade?" · "+parsed.grade:""}${parsed.certNum?" · Cert: "+parsed.certNum:""}`);onResult(parsed);
     }catch(e){setResult("err");const msg=e?.message||"Unknown error";setMsg(msg.includes("not configured")?"Scanner not configured — add ANTHROPIC_API_KEY in Vercel":msg.includes("503")||msg.includes("not configured")?"API key missing in Vercel settings":"Could not read card — try better lighting or a closer shot. Error: "+msg);}finally{setScanning(false);}};
   const libRef=useRef(null);
