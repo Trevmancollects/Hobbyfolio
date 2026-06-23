@@ -1763,7 +1763,7 @@ function DashboardTab({inventory,transactions,expenses,snapshots,onNavigate}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // APP ROOT
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function HobbyFolio(){
+export default function CardPulse(){
   const[authReady,setAuthReady]=useState(false);
   const[authUser,setAuthUser]=useState(null);
   useEffect(()=>{
@@ -1773,11 +1773,11 @@ export default function HobbyFolio(){
     });
   },[]);
   if(!authReady)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-4xl animate-pulse">🃏</div></div>;
-  if(!authUser)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🃏</div><div className="text-slate-300 font-medium">HobbyFolio</div><a href="/auth/login" className="text-blue-400 hover:text-blue-300 text-sm">Sign in to continue</a></div></div>;
-  return <HobbyFolioApp authUser={authUser}/>;
+  if(!authUser)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-4"><div className="text-4xl">🃏</div><div className="text-slate-300 font-medium">CardPulse</div><a href="/auth/login" className="text-blue-400 hover:text-blue-300 text-sm">Sign in to continue</a></div></div>;
+  return <CardPulseApp authUser={authUser}/>;
 }
 
-function HobbyFolioApp({authUser}){
+function CardPulseApp({authUser}){
   const[tab,setTab]=useState("dashboard");const[sidebarOpen,setSidebarOpen]=useState(false);
   const[inventory,setInventory,invL]=usePersist("cv_inventory",[]);
   const[transactions,setTransactions,txL]=usePersist("cv_transactions",[]);
@@ -1785,17 +1785,17 @@ function HobbyFolioApp({authUser}){
   const[snapshots,setSnapshots,snapL]=usePersist("cv_snapshots",[]);
   const[journal,setJournal,jL]=usePersist("cv_journal",[]);
   const loaded=invL&&txL&&expL&&snapL&&jL;
-  if(!loaded)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-3"><div className="text-4xl animate-pulse">🃏</div><div className="text-slate-300 font-medium">Loading HobbyFolio...</div></div></div>;
+  if(!loaded)return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-center space-y-3"><div className="text-4xl animate-pulse">🃏</div><div className="text-slate-300 font-medium">Loading CardPulse...</div></div></div>;
   return(<div className="min-h-screen bg-slate-900 text-slate-200" style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
     <style>{`*{box-sizing:border-box;} ::-webkit-scrollbar{width:5px;height:5px;} ::-webkit-scrollbar-track{background:#0F172A;} ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;} .holo-shimmer{background:linear-gradient(135deg,#3B82F6 0%,#8B5CF6 25%,#EC4899 50%,#F59E0B 75%,#10B981 100%);background-size:200% 200%;animation:holo 4s ease infinite;} @keyframes holo{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
     <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 sticky top-0 z-40 gap-2">
-      <div className="flex items-center gap-2 flex-shrink-0"><div className="holo-shimmer w-7 h-7 rounded-lg p-0.5"><div className="bg-slate-800 rounded-md w-full h-full flex items-center justify-center text-sm">🃏</div></div><span className="font-bold text-slate-100">HobbyFolio</span></div>
+      <div className="flex items-center gap-2 flex-shrink-0"><div className="holo-shimmer w-7 h-7 rounded-lg p-0.5"><div className="bg-slate-800 rounded-md w-full h-full flex items-center justify-center text-sm">🃏</div></div><span className="font-bold text-slate-100">CardPulse</span></div>
       <GlobalSearch inventory={inventory} transactions={transactions} onNavigate={t=>{setTab(t);setSidebarOpen(false);}}/>
       <button onClick={()=>setSidebarOpen(o=>!o)} className="text-slate-300 text-xl cursor-pointer flex-shrink-0">☰</button>
     </div>
     <div className="flex">
       <aside className={clx("fixed lg:sticky top-0 h-screen z-30 flex flex-col bg-slate-800 border-r border-slate-700 transition-all duration-200 lg:translate-x-0 lg:w-56",sidebarOpen?"translate-x-0 w-56":"-translate-x-full w-56")}>
-        <div className="p-4 flex items-center gap-3 border-b border-slate-700"><div className="holo-shimmer w-9 h-9 rounded-xl p-0.5 flex-shrink-0"><div className="bg-slate-800 rounded-lg w-full h-full flex items-center justify-center text-lg">🃏</div></div><div><div className="font-bold text-slate-100 text-sm">HobbyFolio</div><div className="text-xs text-slate-400">Business Manager</div></div></div>
+        <div className="p-4 flex items-center gap-3 border-b border-slate-700"><div className="holo-shimmer w-9 h-9 rounded-xl p-0.5 flex-shrink-0"><div className="bg-slate-800 rounded-lg w-full h-full flex items-center justify-center text-lg">🃏</div></div><div><div className="font-bold text-slate-100 text-sm">CardPulse</div><div className="text-xs text-slate-400">Card Business Manager</div></div></div>
         <div className="hidden lg:block p-2 border-b border-slate-700"><GlobalSearch inventory={inventory} transactions={transactions} onNavigate={t=>setTab(t)}/></div>
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">{NAV_ITEMS.map(n=><button key={n.id} onClick={()=>{setTab(n.id);setSidebarOpen(false);}} className={clx("w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer",tab===n.id?"bg-blue-600/20 text-blue-300 border border-blue-500/30":"text-slate-400 hover:bg-slate-700 hover:text-slate-200")}><span className="text-base">{n.icon}</span>{n.label}</button>)}</nav>
         <div className="p-3 border-t border-slate-700"><button onClick={async()=>{await supabase.auth.signOut();window.location.href="/";}} className="w-full text-left text-xs text-slate-500 hover:text-slate-300 cursor-pointer mb-2">Sign out</button><div className="text-xs text-slate-500 text-center">{inventory.filter(c=>isActive(c.status)).length} active · {inventory.filter(c=>c.status==="Sold").length} sold · {transactions.length} tx</div></div>
@@ -1946,19 +1946,33 @@ function ShowModeTab({inventory,setInventory,transactions,setTransactions}){
 
     {/* ── QUICK SELL ── */}
     {showTab==="sell"&&<div className="space-y-3">
-      {!sellCard&&<div className="space-y-2">
-        <div className="text-sm text-slate-400 mb-2">Select a card to sell:</div>
+      {!sellCard?<div className="space-y-2">
+        <div className="text-sm text-slate-400 mb-2">Tap a card to record a sale:</div>
+        {activeInv.length===0&&<Card className="p-8 text-center text-slate-500">No active cards in inventory</Card>}
         {activeInv.map(card=>(
-          <Card key={card.id} className="p-3 cursor-pointer hover:border-emerald-500/50 transition-colors" onClick={()=>setSellCard(card)}>
+          <div key={card.id} onClick={()=>setSellCard(card)} className="p-3 rounded-xl border border-slate-700 bg-slate-800 cursor-pointer hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all active:scale-95">
             <div className="flex items-center justify-between">
-              <div><div className="font-medium text-slate-200">{card.player} {card.year}</div><div className="text-xs text-slate-400">{card.grade||"Raw"} {card.certNum?`· #${card.certNum}`:""}</div></div>
-              <div className="text-right"><div className="font-mono text-blue-400">{fmt$(card.marketValue||card.buyPrice)}</div><div className="text-xs text-slate-500">cost {fmt$(card.buyPrice)}</div></div>
+              <div>
+                <div className="font-medium text-slate-200">{card.player} {card.year}</div>
+                <div className="text-xs text-slate-400">{card.grade||"Raw"} {card.certNum?`· #${card.certNum}`:""} · {card.set||""}</div>
+              </div>
+              <div className="text-right flex-shrink-0 ml-3">
+                <div className="font-mono font-bold text-blue-400">{fmt$(card.marketValue||card.buyPrice)}</div>
+                <div className="text-xs text-slate-500">cost {fmt$(card.buyPrice)}</div>
+                <div className="text-xs text-emerald-400 mt-1">Tap to sell →</div>
+              </div>
             </div>
-          </Card>
+          </div>
         ))}
-      </div>}
-      {sellCard&&<div className="space-y-3">
-        <div className="flex items-center gap-2"><button onClick={()=>setSellCard(null)} className="text-slate-400 hover:text-slate-200 cursor-pointer">← Back</button><span className="text-slate-400 text-sm">Selling: <span className="text-slate-200 font-medium">{sellCard.player} {sellCard.year}</span></span></div>
+      </div>:<div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={()=>setSellCard(null)} className="text-slate-400 hover:text-slate-200 cursor-pointer text-sm">← Back</button>
+          <div className="text-slate-200 font-semibold">{sellCard.player} {sellCard.year} {sellCard.grade||"Raw"}</div>
+        </div>
+        <div className="p-3 bg-slate-900 rounded-lg text-xs text-slate-400">
+          Cost basis: <span className="text-slate-200 font-mono font-bold">{fmt$(sellCard.buyPrice)}</span>
+          {sellCard.certNum&&<span className="ml-3">Cert: <span className="font-mono text-slate-300">{sellCard.certNum}</span></span>}
+        </div>
         <SellCardModal card={sellCard} onSave={sale=>handleSell(sellCard,sale)} onClose={()=>setSellCard(null)}/>
       </div>}
     </div>}
