@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
-      return NextResponse.json({ error: 'Scanner not configured — add ANTHROPIC_API_KEY to Vercel environment variables' }, { status: 503 })
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not found in environment' }, { status: 503 })
     }
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -33,16 +33,18 @@ export async function POST(req: NextRequest) {
       })
     })
 
+    const data = await response.json()
+
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      return NextResponse.json({ error: err.error?.message || 'Anthropic API error' }, { status: response.status })
+      return NextResponse.json({ 
+        error: `Anthropic error: ${data.error?.message || response.status}` 
+      }, { status: response.status })
     }
 
-    const data = await response.json()
     const text = data.content?.find((b: any) => b.type === 'text')?.text || ''
     return NextResponse.json({ text })
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: `Server error: ${err.message}` }, { status: 500 })
   }
 }
